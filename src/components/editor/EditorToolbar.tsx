@@ -6,7 +6,7 @@ import { parseOTUI } from '@/lib/otui-parser';
 import { Undo2, Redo2, FileDown, FileUp, Trash2, Code, X } from 'lucide-react';
 import { useState, useRef } from 'react';
 
-export function EditorToolbar() {
+export function EditorToolbar({ children }: { children?: React.ReactNode }) {
   const { state, dispatch, pushHistory } = useEditor();
   const [showCode, setShowCode] = useState(false);
   const [importText, setImportText] = useState('');
@@ -77,6 +77,8 @@ export function EditorToolbar() {
         <input ref={fileInputRef} type="file" accept=".otui" className="hidden" onChange={handleImportFile} />
 
         <div className="flex-1" />
+
+        {children}
 
         <ToolbarBtn
           icon={Trash2}
