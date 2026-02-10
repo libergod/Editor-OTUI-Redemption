@@ -57,7 +57,7 @@ export function ResizeHandle({ widgetId, position }: ResizeHandleProps) {
           dispatch({ type: 'UPDATE_PROPERTY', widgetId, key: 'size', value: `${Math.round(newW)} ${startSize.h}` });
         }
       }
-      if (position === 'bottom' && position !== 'bottom-right') {
+      if (position === 'bottom') {
         const newH = Math.max(20, startSize.h + dy);
         dispatch({ type: 'UPDATE_PROPERTY', widgetId, key: 'height', value: String(Math.round(newH)) });
         dispatch({ type: 'UPDATE_PROPERTY', widgetId, key: 'size', value: `${startSize.w} ${Math.round(newH)}` });
