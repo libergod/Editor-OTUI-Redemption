@@ -78,6 +78,8 @@ export function EditorToolbar({ children }: { children?: React.ReactNode }) {
 
         <div className="flex-1" />
 
+        {children}
+
         <ToolbarBtn
           icon={Trash2}
           label="Clear All"
