@@ -1,176 +1,363 @@
 # OTUI Designer Suite
 
-Visual editor for creating OTUI interfaces compatible with OTClient Redemption.
+**Visual editor for creating OTUI interfaces for OTClient Redemption**
 
-## Project info
+A modern, browser-based WYSIWYG editor for designing user interfaces for OTClient (Open Tibia Client). Supports the full OTUI standard including widgets, anchors, layouts, events, state styling, and internationalization.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+---
 
-## OTUI Format Guide
+## 🎯 Features
 
-### Supported Widget Declaration Formats
+### Visual Editor
+- **Drag & Drop Interface**: Build UIs visually without writing code
+- **Multi-Selection**: Select and move multiple widgets at once (Ctrl/Shift + Click)
+- **Smart Alignment Guides**: Visual guides show alignment with siblings and parent edges
+- **Parent-Aware Spacing**: See pixel distances to edges and center while dragging
+- **Auto-Anchoring**: Hold Ctrl while dropping to auto-generate anchor properties
+- **Resize Handles**: Drag handles to resize widgets visually
+- **OTClient Viewport**: Visual boundary showing standard client resolution (800×600px)
+- **Real-time Preview**: See exactly how your UI will render in OTClient
 
-The parser accepts multiple widget declaration formats for compatibility with different OTUI sources (including OTClient Redemption modules):
+### OTUI Standard Support
+- **All Widget Types**: Containers, labels, buttons, inputs, game widgets, and more
+- **Anchors & Layouts**: Full support for parent/sibling anchoring and flex layouts  
+- **State Styling**: `$hover`, `$pressed`, `$focus` pseudo-states for interactive widgets
+- **Event Handlers**: `@onClick`, `@onHover`, inline Lua event blocks
+- **Internationalization**: `!text` directive with `tr()` function support
+- **Multi-Format Parser**: Imports OTUI from various syntax styles (angle brackets, colons, Lua-style)
+
+### Developer Tools
+- **Code Export**: Export clean, standard-compliant `.otui` files
+- **Import & Parse**: Load existing `.otui` files with validation
+- **Validation**: Real-time linting with OTCR standard compliance checks
+- **Code Comparison**: Side-by-side view of original vs. fixed/optimized code
+- **Undo/Redo**: Full history tracking with keyboard shortcuts
+- **Hierarchy Tree**: Visual widget tree with drag-to-reparent
+- **Properties Panel**: Edit all widget properties with smart controls
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+- **Node.js** 18+ and npm (install via [nvm](https://github.com/nvm-sh/nvm))
+- Modern browser (Chrome, Firefox, Edge, Safari)
+
+### Installation
+
+```bash
+# Clone the repository
+git clone <YOUR_GIT_URL>
+cd otui-designer-suite
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+### Build for Production
+
+```bash
+npm run build
+npm run preview  # Preview production build locally
+```
+
+---
+
+## 📖 Usage Guide
+
+### Creating a New Interface
+
+1. **Add Widgets**: Drag widgets from the left palette onto the canvas
+2. **Arrange**: Click to select, drag to move, use Ctrl/Shift for multi-select
+3. **Configure**: Edit properties in the right panel (size, colors, text, etc.)
+4. **Anchor**: Hold Ctrl while dropping widgets to auto-generate anchors
+5. **Preview**: Click "Client Preview" to see how it renders in OTClient
+6. **Export**: Click Export → Download .otui to save your interface
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl + Z` | Undo |
+| `Ctrl + Y` | Redo |
+| `Ctrl + R` | Toggle Rulers |
+| `Ctrl/Shift + Click` | Multi-select widgets |
+| `Shift + Drag` | Lock to horizontal/vertical axis |
+| `Ctrl + Drop` | Auto-anchor to nearest edges |
+| `Delete` | Remove selected widget |
+
+### Alignment Guides
+
+While dragging widgets, visual guides appear when:
+- Widget edges align with siblings (left, right, top, bottom, center)
+- Widget is near parent container edges or center
+- Spacing labels show pixel distances to parent edges
+
+**Tip**: Guides only show siblings with the same parent for cleaner hierarchy-aware alignment.
+
+---
+
+---
+
+## 📁 OTUI Format Reference
+
+### Widget Declaration Formats
+
+The parser supports multiple formats for maximum compatibility:
 
 **Format 1: Angle Bracket (Standard)**
 ```otui
-WidgetName < WidgetType
-  property: value
+HealthBar < UIProgressBar
+  size: 200 16
+  background-color: #2a2a2a
 ```
 
-**Format 2: Inverted (Type Name)**
+**Format 2: Type First (Lua-style)**
 ```otui
-WidgetType WidgetName
-  property: value
+UIProgressBar HealthBar
+  size = 200 16
+  background-color = #2a2a2a
 ```
 
 **Format 3: Colon Separator**
 ```otui
-WidgetName: WidgetType
-  property: value
+HealthBar: UIProgressBar
+  size: 200 16
 ```
 
-### Property Declaration Formats
+### Property Formats
 
-Properties support both colon and equals separators:
+Both `:` and `=` separators are supported:
 
 ```otui
--- Colon style (standard)
-size: 200 150
-background-color: #2a2a2a
-
--- Lua-style equals (OTCR compatible)
-size = 200 150
-background-color = #2a2a2a
+text: "Hello"        # Standard
+text = "Hello"       # Lua-style
 ```
 
 ### Comments
-Both C-style (`//`) and Lua-style (`--`) comments are supported:
 
 ```otui
-// Commented widget
--- Another comment
+-- Lua-style comment
+// C-style comment
 
 MyPanel < UIPanel  -- inline comment
-  size: 200 150
 ```
 
-### Complete Example
-```otui
-MyPanel < UIPanel
-  size: 200 150
-  background-color: #2a2a2a
-  padding: 8
+### Advanced Features
 
-  ChildWidget < UILabel
-    text: "Hello"
-    color: #fff
-    anchors.centerIn: parent
+**Anchors**
+```otui
+MyLabel < UILabel
+  anchors.left: parent.left
+  anchors.top: parent.top
+  margin-left: 10
+  margin-top: 5
+```
+
+**Layouts**
+```otui
+MyContainer < UIWidget
+  layout:
+    type: vertical
+    spacing: 5
+```
+
+**State Styling (Pseudo-states)**
+```otui
+MyButton < UIButton
+  background-color: #3a5a7f
+  $hover:
+    background-color: #4a6a8f
+  $pressed:
+    background-color: #2a4a6f
+```
+
+**Event Handlers**
+```otui
+MyButton < UIButton
+  @onClick: |
+    print("Button clicked!")
+    doSomething()
+```
+
+**Internationalization**
+```otui
+MyLabel < UILabel
+  !text: tr('greeting.hello')  # Marks text for translation
 ```
 
 ### Valid Widget Types
-**Containers**: UIWidget, UIPanel, UIMiniWindow, UIScrollArea, UISeparator, UITabBar, UITab
 
-**Display**: UILabel, UIImage, UIProgressBar, UIList, UIListItem
+| Category | Types |
+|----------|-------|
+| **Containers** | `UIWidget`, `UIPanel`, `UIMiniWindow`, `UIScrollArea`, `UIScrollPanel`, `UISeparator`, `UITabBar`, `UITab` |
+| **Display** | `UILabel`, `UIImage`, `UIProgressBar`, `UIList`, `UIListItem` |
+| **Input** | `UIButton`, `UITextEdit`, `UICheckBox`, `UIRadioButton`, `UISlider`, `UIComboBox`, `UIDropDown` |
+| **Layout** | `UIHorizontalLayout`, `UIVerticalLayout` |
+| **Game** | `UIItem`, `UICreature`, `UIGameMap` |
 
-**Input**: UIButton, UITextEdit, UICheckBox, UIRadioButton, UISlider, UIComboBox, UIDropDown
+### Complete Example
 
-**Layout**: UIHorizontalLayout, UIVerticalLayout
+```otui
+MainWindow < UIMiniWindow
+  size: 300 400
+  text: "Inventory"
+  
+  MiniWindowContents
+    layout:
+      type: vertical
+      spacing: 8
+    
+    HeaderLabel < UILabel
+      text: "Your Items"
+      color: #ffcc00
+      anchors.top: parent.top
+      anchors.horizontalCenter: parent.horizontalCenter
+    
+    ItemContainer < UIScrollArea
+      size: 280 300
+      anchors.top: prev.bottom
+      anchors.horizontalCenter: parent.horizontalCenter
+      margin-top: 10
+      
+      ItemSlot < UIItem
+        size: 32 32
+        background-color: #1a1a1a
+        border-color: #4a7a2a
+    
+    CloseButton < UIButton
+      text: "Close"
+      size: 100 24
+      anchors.bottom: parent.bottom
+      anchors.horizontalCenter: parent.horizontalCenter
+      margin-bottom: 8
+      @onClick: |
+        self:getParent():destroy()
+```
 
-**Game**: UIItem, UICreature
+---
 
-### Importing OTUI Files
-1. Click the **Import** button (↑) in the toolbar
-2. Choose **Load File** to import a `.otui` file, or **Paste Code** for text
-3. The parser will validate the format and show helpful error messages
+## 🔧 Project Structure
 
-### Compatible With OTClient Redemption
-The parser supports various OTUI formats used in OTClient Redemption modules, including:
-- Standard format: `WidgetName < WidgetType`
-- Lua-style format: `UIWidget WidgetName` or `type = value`
-- Colon format: `WidgetName: UIWidget`
-- Comments in both C (`//`) and Lua (`--`) styles
+```
+src/
+├── components/
+│   ├── editor/           # Main editor components
+│   │   ├── OTUIEditor.tsx       # Main layout
+│   │   ├── EditorCanvas.tsx     # Visual canvas with drag/drop
+│   │   ├── WidgetPalette.tsx    # Widget library
+│   │   ├── HierarchyTree.tsx    # Widget tree view
+│   │   ├── PropertiesPanel.tsx  # Property editor
+│   │   ├── EditorToolbar.tsx    # Import/export/validate
+│   │   ├── AlignmentGuides.tsx  # Visual alignment system
+│   │   └── ClientPreview.tsx    # OTClient renderer
+│   └── ui/               # Reusable UI components (shadcn)
+├── lib/
+│   ├── editor-context.tsx    # State management
+│   ├── otui-parser.ts        # OTUI string ↔ AST
+│   ├── otui-types.ts         # Type definitions
+│   ├── otui-validator.ts     # OTCR compliance checks
+│   ├── otui-standard.ts      # Standard reference data
+│   └── i18n.ts               # Internationalization
+└── pages/
+    └── Index.tsx             # Entry point
+```
 
-### Troubleshooting Import Errors
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! This editor is open for the OTClient community to test, improve, and extend.
+
+### Areas for Improvement
+
+- **Widget Templates**: Pre-built common UI patterns (login screens, inventory, etc.)
+- **Theme System**: Color schemes and style presets
+- **Grid Snapping**: Enhanced grid alignment options
+- **Component Library**: Reusable composite widgets
+- **Lua Integration**: Live Lua scripting/testing
+- **More Widget Types**: Support for custom/extended widget types
+- **Accessibility**: Keyboard navigation improvements
+
+### Development Workflow
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/my-feature`
+3. Make changes and test thoroughly
+4. Commit with clear messages: `git commit -m "Add: feature description"`
+5. Push and open a Pull Request
+
+### Code Style
+
+- TypeScript strict mode enabled
+- ESLint configuration included
+- Follow existing patterns for consistency
+- Add comments for complex logic
+- Update tests when adding features
+
+---
+
+## 🐛 Troubleshooting
+
+### Import Errors
 
 | Error | Solution |
 |-------|----------|
-| `No root-level widgets found` | Ensure you have at least one widget at indent 0 |
-| `No valid widgets found` | Check widget type names are correct (list above) |
-| `Could not parse...` | Verify indentation and property syntax |
-| `Unknown Widget Type` | Use only types from the valid list above |
+| `No root-level widgets found` | Ensure at least one widget starts at indent level 0 |
+| `No valid widgets found` | Check widget type names against valid types list |
+| `Could not parse line...` | Verify indentation (spaces, not tabs) and property syntax |
+| `Unknown Widget Type` | Use only widget types from the reference table above |
 
-### Example Test Files
-Test files with different formats are included:
-- `otcr-format1.otui` - Lua-style comments with colon properties
-- `otcr-format2.otui` - Lua-style equals separator
-- `otcr-format3.otui` - Inverted format (Type WidgetName)
-- `otcr-format4.otui` - Colon separator format
+### Dragging Issues
 
-## How can I edit this code?
+- **Widget won't move**: Ensure widget is selected (click first)
+- **Jumps to wrong position**: Check parent container constraints
+- **Multi-select not working**: Hold Ctrl/Cmd or Shift while clicking
 
-There are several ways of editing your application.
+### Visual Glitches
 
-**Use Lovable**
+- **Alignment guides stuck**: Release mouse button to clear guides
+- **Viewport not visible**: Toggle viewport in canvas header
+- **Properties not updating**: Check browser console for errors
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+---
 
-Changes made via Lovable will be committed automatically to this repo.
+## 🛠️ Tech Stack
 
-**Use your preferred IDE**
+- **Frontend**: React 18 + TypeScript
+- **Build Tool**: Vite
+- **UI Framework**: shadcn/ui + Radix UI
+- **Styling**: Tailwind CSS
+- **State**: React Context + Custom Hooks
+- **Parser**: Custom recursive descent parser
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+---
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+---
 
-Follow these steps:
+## 📜 License
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+This project is open source and available for the OTClient community. Feel free to use, modify, and distribute.
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+## 🙏 Acknowledgments
 
-# Step 3: Install the necessary dependencies.
-npm i
+- **OTClient Redemption** team for the OTUI standard
+- **shadcn/ui** for beautiful UI components
+- **Open Tibia** community for continued support
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+---
 
-**Edit a file directly in GitHub**
+## 📞 Support & Community
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+- **Issues**: Report bugs or request features via GitHub Issues
+- **Discussions**: Share ideas and ask questions in GitHub Discussions
+- **OTClient Forums**: Join the broader OTClient Redemption community
 
-**Use GitHub Codespaces**
+---
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+**Built with ❤️ for the OTClient community**
