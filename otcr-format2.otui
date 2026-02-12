@@ -1,0 +1,16 @@
+-- Alternative OTCR format normalized
+
+MainPanel < UIPanel
+  size: 300 200
+  background-color: #2a2a2a
+  padding: 8
+
+  Header < UIPanel
+    size: 300 40
+    background-color: #1a1a1a
+    border-color: #444
+
+    Label < UILabel
+      text: tr('Header')
+      color: #fff
+      anchors.centerIn: parent

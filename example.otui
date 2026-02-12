@@ -1,0 +1,51 @@
+// Example OTUI file for testing import functionality
+// Cleaned to be OTClient Redemption compatible
+
+MainWindow < UIMiniWindow
+  size: 400 300
+  text: tr('Example Panel')
+  background-color: #2a2a2a
+
+  Header < UIPanel
+    size: 400 40
+    background-color: #1a1a1a
+    border-color: #444
+    padding: 4
+
+    Title < UILabel
+      text: tr('Welcome to OTUI Editor')
+      color: #fff
+      anchors.centerIn: parent
+
+  Content < UIPanel
+    size: 400 250
+    background-color: #1a1a1a
+    padding: 8
+
+    NameLabel < UILabel
+      text: tr('Enter your name:')
+      color: #ccc
+
+    NameInput < UITextEdit
+      size: 300 24
+      background-color: #2a2a2a
+      color: #fff
+      border-color: #444
+
+    ButtonPanel < UIHorizontalLayout
+      size: 100% 40
+      layout:
+        type: horizontal
+        spacing: 4
+
+      ConfirmBtn < UIButton
+        size: 100 30
+        text: tr('OK')
+        background-color: #3a5a7f
+        color: #fff
+
+      CancelBtn < UIButton
+        size: 100 30
+        text: tr('Cancel')
+        background-color: #5a3a3a
+        color: #fff

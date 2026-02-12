@@ -1,0 +1,63 @@
+// Test formatting: quotes for literal, tr() for translatable
+
+MainWindow < UIMiniWindow
+  text: tr('Main Window')
+  size: 600 400
+
+  Header < UIPanel
+    height: 40
+    background-color: "#333"
+
+    Title < UILabel
+      text: tr('Character Information')
+      color: "#fff"
+      padding: 8
+
+  Content < UIPanel
+    anchors.top: Header.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: BottomBar.top
+
+    NameLabel < UILabel
+      text: tr('Player Name:')
+      color: "#ccc"
+
+    NameValue < UILabel
+      text: tr('Unknown Hero')
+      color: "#fff"
+
+    LevelLabel < UILabel
+      text: tr('Lv')
+      color: "#ccc"
+
+    LevelValue < UILabel
+      text: "1"
+      color: "#aaf"
+
+  BottomBar < UIPanel
+    anchors.bottom: parent.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    height: 24
+    background-color: "#1a1a1a"
+
+    StatusLabel < UILabel
+      text: tr('Ready')
+      color: "#4a4"
+      padding: 4
+
+  ConfirmBtn < UIButton
+    size: 120 30
+    text: tr('Confirm')
+    background-color: "#3a5a7f"
+
+  CancelBtn < UIButton
+    size: 120 30
+    text: tr('Cancel')
+    background-color: "#5a3a3a"
+
+  ResetBtn < UIButton
+    size: 120 30
+    text: tr('Reset Depot Password')
+    background-color: #5a3a3a

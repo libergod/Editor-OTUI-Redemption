@@ -1,0 +1,5 @@
+// Simple OTUI test (cleaned)
+SimpleWidget < UIPanel
+  size: 200 150
+  background-color: #2a2a2a
+  padding: 8

@@ -1,9 +1,10 @@
 // Hierarchy Tree - Shows widget parent/child structure
 
-import { OTUIWidget } from '@/lib/otui-types';
+import { OTUIWidget, findWidget } from '@/lib/otui-types';
 import { useEditor } from '@/lib/editor-context';
 import { ChevronRight, ChevronDown, Trash2, Copy, Eye, EyeOff } from 'lucide-react';
 import { useState } from 'react';
+import { t } from '@/lib/i18n';
 
 function TreeNode({ widget, depth = 0 }: { widget: OTUIWidget; depth?: number }) {
   const { state, dispatch, pushHistory } = useEditor();
@@ -12,7 +13,34 @@ function TreeNode({ widget, depth = 0 }: { widget: OTUIWidget; depth?: number })
   const hasChildren = widget.children.length > 0;
 
   return (
-    <div>
+    <div
+      draggable
+      onDragStart={e => {
+        e.dataTransfer.setData('widget-id', widget.id);
+        e.dataTransfer.effectAllowed = 'move';
+      }}
+      onDragOver={e => { e.preventDefault(); }}
+      onDrop={e => {
+        e.preventDefault();
+        const id = e.dataTransfer.getData('widget-id');
+        if (id && id !== widget.id) {
+          const dragged = findWidget(state.rootWidgets, id);
+          if (dragged) {
+            // prevent dropping onto own descendant
+            const isDescendant = (node: OTUIWidget, targetId: string): boolean => {
+              for (const c of node.children) {
+                if (c.id === targetId) return true;
+                if (isDescendant(c, targetId)) return true;
+              }
+              return false;
+            };
+            if (isDescendant(dragged, widget.id)) return; // ignore invalid drop
+          }
+          dispatch({ type: 'MOVE_WIDGET', widgetId: id, newParentId: widget.id });
+          pushHistory('Move widget');
+        }
+      }}
+    >
       <div
         className={`flex items-center gap-1 px-1 py-0.5 cursor-pointer text-xs rounded-sm transition-colors group
           ${isSelected ? 'bg-primary/20 text-primary' : 'hover:bg-editor-hover text-foreground'}`}
@@ -61,18 +89,33 @@ function TreeNode({ widget, depth = 0 }: { widget: OTUIWidget; depth?: number })
 }
 
 export function HierarchyTree() {
-  const { state } = useEditor();
+  const { state, dispatch, pushHistory } = useEditor();
+
+  // Check if we have a virtual root (multiple root widgets)
+  const isVirtualRoot = state.rootWidgets.length === 1 && state.rootWidgets[0].id === '__virtual_root__';
+  const widgetsToRender = isVirtualRoot ? state.rootWidgets[0].children : state.rootWidgets;
 
   return (
     <div className="flex flex-col h-full">
-      <div className="editor-panel-header">Hierarchy</div>
-      <div className="flex-1 overflow-y-auto py-1">
-        {state.rootWidgets.length === 0 ? (
+      <div className="editor-panel-header">{t('ui.hierarchy')}</div>
+      <div
+        className="flex-1 overflow-y-auto py-1"
+        onDragOver={e => e.preventDefault()}
+        onDrop={e => {
+          e.preventDefault();
+          const id = e.dataTransfer.getData('widget-id');
+          if (id) {
+            dispatch({ type: 'MOVE_WIDGET', widgetId: id, newParentId: null });
+            pushHistory('Move widget');
+          }
+        }}
+      >
+        {widgetsToRender.length === 0 ? (
           <div className="text-xs text-muted-foreground p-3 text-center">
             Drop widgets here to start
           </div>
         ) : (
-          state.rootWidgets.map(w => <TreeNode key={w.id} widget={w} />)
+          widgetsToRender.map(w => <TreeNode key={w.id} widget={w} />)
         )}
       </div>
     </div>

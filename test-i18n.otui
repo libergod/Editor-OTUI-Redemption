@@ -1,0 +1,60 @@
+// Test file for i18n/tr() handling
+
+MainWindow < UIMiniWindow
+  text: tr('Main Window')  // Translatable text
+  size: 600 400
+
+  Header < UIPanel
+    height: 40
+    background-color: "#333"
+
+    Title < UILabel
+      text: tr('Character Information')  // Translatable
+      color: "#fff"
+      padding: 8
+
+  Content < UIPanel
+    anchors.top: Header.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: ConfirmBtn.top
+
+    NameLabel < UILabel
+      text: tr('Player Name:')  // Converted to translatable
+      color: "#ccc"
+
+    NameValue < UILabel
+      text: tr('Unknown Hero')  // Translatable
+      color: "#fff"
+
+    LevelLabel < UILabel
+      text: tr('Level')  // Converted to translatable
+      color: "#ccc"
+
+    LevelValue < UILabel
+      text: "1"  // Numeric, kept literal
+      color: "#aaf"
+
+  -- Buttons at bottom
+  ConfirmBtn < UIButton
+    size: 120 30
+    text: tr('Confirm')  // Translatable
+    background-color: "#3a5a7f"
+
+  CancelBtn < UIButton
+    size: 120 30
+    text: tr('Cancel')  // Translatable
+    background-color: "#5a3a3a"
+
+-- Separate root widget (multiple roots test)
+StatusBar < UIPanel
+  anchors.bottom: parent.bottom
+  anchors.left: parent.left
+  anchors.right: parent.right
+  height: 24
+  background-color: "#1a1a1a"
+
+  StatusLabel < UILabel
+    text: tr('Ready')  // Translatable
+    color: "#4a4"
+    padding: 4

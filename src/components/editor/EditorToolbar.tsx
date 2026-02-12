@@ -1,17 +1,29 @@
 // Editor Toolbar - Top bar with actions
 
 import { useEditor } from '@/lib/editor-context';
-import { serializeOTUI } from '@/lib/otui-parser';
-import { parseOTUI } from '@/lib/otui-parser';
-import { Undo2, Redo2, FileDown, FileUp, Trash2, Code, X } from 'lucide-react';
+import { serializeOTUI, parseOTUI, validateI18nUsage, I18nWarning } from '@/lib/otui-parser';
+import { validateOTUI, autoFixOTUI, OTUIValidationResult } from '@/lib/otui-validator';
+import { t, setLang, getLang } from '@/lib/i18n';
+import { Undo2, Redo2, FileDown, FileUp, Trash2, Code, X, BookOpen } from 'lucide-react';
 import { useState, useRef } from 'react';
+import { CodeComparisonModal } from './CodeComparisonModal';
+import { OTUIStandardReference } from './OTUIStandardReference';
+import { OTUIWidget } from '@/lib/otui-types';
 
-export function EditorToolbar({ children }: { children?: React.ReactNode }) {
+export function EditorToolbar({ children, onWarningsUpdate }: { children?: React.ReactNode; onWarningsUpdate?: (warnings: I18nWarning[]) => void }) {
   const { state, dispatch, pushHistory } = useEditor();
   const [showCode, setShowCode] = useState(false);
   const [importText, setImportText] = useState('');
   const [showImport, setShowImport] = useState(false);
+  const [showStandardRef, setShowStandardRef] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Auto-fix validation states
+  const [showComparison, setShowComparison] = useState(false);
+  const [originalWidgets, setOriginalWidgets] = useState<OTUIWidget[]>([]);
+  const [fixedWidgets, setFixedWidgets] = useState<OTUIWidget[]>([]);
+  const [validationResult, setValidationResult] = useState<OTUIValidationResult | null>(null);
+  const [pendingImportSource, setPendingImportSource] = useState<'file' | 'text'>('file');
 
   const handleExport = () => {
     const otui = serializeOTUI(state.rootWidgets);
@@ -31,25 +43,106 @@ export function EditorToolbar({ children }: { children?: React.ReactNode }) {
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
       try {
+        if (!text || text.trim().length === 0) {
+          alert('File is empty');
+          return;
+        }
         const widgets = parseOTUI(text);
-        dispatch({ type: 'SET_WIDGETS', widgets });
-        pushHistory('Import file');
-      } catch {
-        alert('Failed to parse OTUI file');
+        if (!widgets || widgets.length === 0) {
+          alert('No valid widgets found in file. Check the OTUI format.');
+          return;
+        }
+        
+        // Validate OTUI for OTClient Redemption compatibility
+        const validation = validateOTUI(widgets);
+        
+        if (validation.needsAutoFix || validation.score < 100) {
+          // Auto-fix issues
+          const fixed = autoFixOTUI(widgets);
+          
+          // Show comparison modal
+          setOriginalWidgets(widgets);
+          setFixedWidgets(fixed);
+          setValidationResult(validation);
+          setPendingImportSource('file');
+          setShowComparison(true);
+        } else {
+          // No issues, import directly
+          applyImport(widgets, 'file');
+        }
+        
+        e.target.value = ''; // Reset file input
+      } catch (err) {
+        console.error('Import error:', err);
+        alert(`Failed to import OTUI file: ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
     };
     reader.readAsText(file);
   };
 
-  const handleImportText = () => {
-    try {
-      const widgets = parseOTUI(importText);
-      dispatch({ type: 'SET_WIDGETS', widgets });
-      pushHistory('Import text');
+  const applyImport = (widgets: OTUIWidget[], source: 'file' | 'text') => {
+    dispatch({ type: 'SET_WIDGETS', widgets });
+    pushHistory(`Import ${source}`);
+    
+    // Validate i18n usage and notify parent
+    const warnings = validateI18nUsage(widgets);
+    onWarningsUpdate?.(warnings);
+    
+    if (source === 'text') {
       setShowImport(false);
       setImportText('');
-    } catch {
-      alert('Failed to parse OTUI');
+    }
+  };
+
+  const handleAcceptFixed = () => {
+    applyImport(fixedWidgets, pendingImportSource);
+    setShowComparison(false);
+  };
+
+  const handleKeepOriginal = () => {
+    applyImport(originalWidgets, pendingImportSource);
+    setShowComparison(false);
+  };
+
+  const handleImportText = () => {
+    try {
+      if (!importText || importText.trim().length === 0) {
+        alert('Please paste OTUI code first');
+        return;
+      }
+      const widgets = parseOTUI(importText);
+      if (!widgets || widgets.length === 0) {
+        alert('No valid widgets found. Supported formats:\n\n' +
+          '1) WidgetName < UIPanel\n' +
+          '2) UIPanel WidgetName\n' +
+          '3) WidgetName: UIPanel\n\n' +
+          'Example:\n' +
+          'MyPanel < UIPanel\n' +
+          '  size: 200 150\n' +
+          '  background-color: #2a2a2a');
+        return;
+      }
+      
+      // Validate OTUI for OTClient Redemption compatibility
+      const validation = validateOTUI(widgets);
+      
+      if (validation.needsAutoFix || validation.score < 100) {
+        // Auto-fix issues
+        const fixed = autoFixOTUI(widgets);
+        
+        // Show comparison modal
+        setOriginalWidgets(widgets);
+        setFixedWidgets(fixed);
+        setValidationResult(validation);
+        setPendingImportSource('text');
+        setShowComparison(true);
+      } else {
+        // No issues, import directly
+        applyImport(widgets, 'text');
+      }
+    } catch (err) {
+      console.error('Import error:', err);
+      alert(`Failed to parse OTUI:\n${err instanceof Error ? err.message : 'Unknown error'}\n\nSupported formats:\n1) WidgetName < UIPanel\n2) UIPanel WidgetName\n3) WidgetName: UIPanel`);
     }
   };
 
@@ -72,6 +165,7 @@ export function EditorToolbar({ children }: { children?: React.ReactNode }) {
 
         <ToolbarBtn icon={FileUp} label="Import" onClick={() => setShowImport(true)} />
         <ToolbarBtn icon={FileDown} label="Export" onClick={handleExport} />
+        <ToolbarBtn icon={BookOpen} label="OTUI Standard" onClick={() => setShowStandardRef(true)} />
         <ToolbarBtn icon={Code} label="Code" onClick={() => setShowCode(!showCode)} active={showCode} />
 
         <input ref={fileInputRef} type="file" accept=".otui" className="hidden" onChange={handleImportFile} />
@@ -86,6 +180,12 @@ export function EditorToolbar({ children }: { children?: React.ReactNode }) {
           onClick={() => { dispatch({ type: 'SET_WIDGETS', widgets: [] }); pushHistory('Clear'); }}
           variant="destructive"
         />
+        <div className="ml-2 flex items-center gap-2">
+          <select value={getLang()} onChange={e => { setLang(e.target.value); }} className="bg-secondary/80 border border-border rounded px-1 py-0.5 text-[11px]">
+            <option value="en">EN</option>
+            <option value="pt">PT-BR</option>
+          </select>
+        </div>
       </div>
 
       {/* Code output panel */}
@@ -111,7 +211,7 @@ export function EditorToolbar({ children }: { children?: React.ReactNode }) {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowImport(false)}>
           <div className="bg-card border border-border rounded-lg w-[600px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <span className="text-sm font-semibold">Import OTUI</span>
+              <span className="text-sm font-semibold">{t('import.title')}</span>
               <button onClick={() => setShowImport(false)}><X className="w-4 h-4 text-muted-foreground" /></button>
             </div>
             <div className="p-4 flex flex-col gap-3 flex-1">
@@ -119,24 +219,42 @@ export function EditorToolbar({ children }: { children?: React.ReactNode }) {
                 className="text-xs text-primary hover:underline self-start"
                 onClick={() => fileInputRef.current?.click()}
               >
-                Or import from file...
+                {t('import.fromFile')}
               </button>
               <textarea
                 value={importText}
                 onChange={e => setImportText(e.target.value)}
-                placeholder="Paste OTUI content here..."
+                placeholder={t('import.placeholder')}
                 className="flex-1 min-h-[200px] bg-secondary border border-border rounded p-3 text-[11px] font-mono text-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary/50"
               />
               <button
                 onClick={handleImportText}
                 className="self-end px-4 py-1.5 bg-primary text-primary-foreground rounded text-xs font-semibold hover:bg-primary/90"
               >
-                Import
+                {t('import.button')}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Code Comparison Modal */}
+      {showComparison && validationResult && (
+        <CodeComparisonModal
+          onClose={() => setShowComparison(false)}
+          onAcceptFixed={handleAcceptFixed}
+          onKeepOriginal={handleKeepOriginal}
+          originalCode={serializeOTUI(originalWidgets)}
+          fixedCode={serializeOTUI(fixedWidgets)}
+          validation={validationResult}
+        />
+      )}
+
+      {/* OTUI Standard Reference Modal */}
+      <OTUIStandardReference
+        isOpen={showStandardRef}
+        onClose={() => setShowStandardRef(false)}
+      />
     </>
   );
 }

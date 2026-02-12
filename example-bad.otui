@@ -1,0 +1,37 @@
+-- Example OTUI file with issues (for testing auto-fix)
+
+MainPanel < UIPanel
+  background-color: #2a2a2a
+  border-color: #555
+  
+  TitleLabel < UILabel
+    text: "My Window"
+    color: #ffffff
+    margin-top: 10
+    margin-left: 10
+    margin-right: 0
+    margin-bottom: 0
+  
+  DescriptionLabel < UILabel
+    "This is a description"
+    anchors.top: prev.bottom
+    color: #cccccc
+  
+  ActionButton < UIButton
+    text: Click Me
+    anchors.top: prev.bottom
+    anchors.left: parent.left
+    x: 15
+    y: 100
+    background-color: #3a3a3a
+    border-color: #666
+  
+  ProgressBar1: UIProgressBar
+    percent: 75
+    anchors.top: prev.bottom
+    anchors.left: parent.left
+    background-color: #1a1a1a
+  
+  EditBox < UITextEdit
+    anchors.top: prev.bottom
+    visible: yes

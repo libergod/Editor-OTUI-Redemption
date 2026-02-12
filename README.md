@@ -1,8 +1,111 @@
-# Welcome to your Lovable project
+# OTUI Designer Suite
+
+Visual editor for creating OTUI interfaces compatible with OTClient Redemption.
 
 ## Project info
 
 **URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+
+## OTUI Format Guide
+
+### Supported Widget Declaration Formats
+
+The parser accepts multiple widget declaration formats for compatibility with different OTUI sources (including OTClient Redemption modules):
+
+**Format 1: Angle Bracket (Standard)**
+```otui
+WidgetName < WidgetType
+  property: value
+```
+
+**Format 2: Inverted (Type Name)**
+```otui
+WidgetType WidgetName
+  property: value
+```
+
+**Format 3: Colon Separator**
+```otui
+WidgetName: WidgetType
+  property: value
+```
+
+### Property Declaration Formats
+
+Properties support both colon and equals separators:
+
+```otui
+-- Colon style (standard)
+size: 200 150
+background-color: #2a2a2a
+
+-- Lua-style equals (OTCR compatible)
+size = 200 150
+background-color = #2a2a2a
+```
+
+### Comments
+Both C-style (`//`) and Lua-style (`--`) comments are supported:
+
+```otui
+// Commented widget
+-- Another comment
+
+MyPanel < UIPanel  -- inline comment
+  size: 200 150
+```
+
+### Complete Example
+```otui
+MyPanel < UIPanel
+  size: 200 150
+  background-color: #2a2a2a
+  padding: 8
+
+  ChildWidget < UILabel
+    text: "Hello"
+    color: #fff
+    anchors.centerIn: parent
+```
+
+### Valid Widget Types
+**Containers**: UIWidget, UIPanel, UIMiniWindow, UIScrollArea, UISeparator, UITabBar, UITab
+
+**Display**: UILabel, UIImage, UIProgressBar, UIList, UIListItem
+
+**Input**: UIButton, UITextEdit, UICheckBox, UIRadioButton, UISlider, UIComboBox, UIDropDown
+
+**Layout**: UIHorizontalLayout, UIVerticalLayout
+
+**Game**: UIItem, UICreature
+
+### Importing OTUI Files
+1. Click the **Import** button (↑) in the toolbar
+2. Choose **Load File** to import a `.otui` file, or **Paste Code** for text
+3. The parser will validate the format and show helpful error messages
+
+### Compatible With OTClient Redemption
+The parser supports various OTUI formats used in OTClient Redemption modules, including:
+- Standard format: `WidgetName < WidgetType`
+- Lua-style format: `UIWidget WidgetName` or `type = value`
+- Colon format: `WidgetName: UIWidget`
+- Comments in both C (`//`) and Lua (`--`) styles
+
+### Troubleshooting Import Errors
+
+| Error | Solution |
+|-------|----------|
+| `No root-level widgets found` | Ensure you have at least one widget at indent 0 |
+| `No valid widgets found` | Check widget type names are correct (list above) |
+| `Could not parse...` | Verify indentation and property syntax |
+| `Unknown Widget Type` | Use only types from the valid list above |
+
+### Example Test Files
+Test files with different formats are included:
+- `otcr-format1.otui` - Lua-style comments with colon properties
+- `otcr-format2.otui` - Lua-style equals separator
+- `otcr-format3.otui` - Inverted format (Type WidgetName)
+- `otcr-format4.otui` - Colon separator format
 
 ## How can I edit this code?
 

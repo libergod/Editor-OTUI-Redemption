@@ -1,0 +1,16 @@
+-- OTCR Module Format Test (normalized)
+-- Converted to explicit OTUI format
+
+MainWindow < UIMiniWindow
+  size: 400 300
+  text: tr('OTCR Module')
+  background-color: #2a2a2a
+
+  Content < UIPanel
+    anchors.fill: parent
+    padding: 8
+    background-color: #1a1a1a
+
+    Title < UILabel
+      text: tr('Module Title')
+      color: #fff

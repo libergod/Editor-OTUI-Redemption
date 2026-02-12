@@ -1,0 +1,21 @@
+-- OTCR format with colon separator (normalized)
+
+MainWindow < UIMiniWindow
+  size: 400 300
+  text: tr('Colon Format')
+  background-color: #2a2a2a
+
+  Content < UIPanel
+    anchors.fill: parent
+    padding: 8
+    background-color: #1a1a1a
+
+    Title < UILabel
+      text: tr('Using Colon')
+      color: #fff
+
+    Button < UIButton
+      size: 120 30
+      text: tr('Submit')
+      background-color: #3a5a7f
+      color: #fff

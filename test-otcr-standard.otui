@@ -1,0 +1,90 @@
+-- OTCR Standard Compliance Test File
+-- This file demonstrates all official OTUI features
+
+MainWindow < UIMiniWindow
+  size: 400 300
+  !text: tr('Main Window')
+  @onEscape: hide()
+  @onOpen: onWindowOpen()
+
+  Panel < UIPanel
+    anchors.fill: parent
+    padding: 10
+    background-color: #1a1a1a
+
+    -- Test !text directive
+    TitleLabel < UILabel
+      !text: tr('Welcome to OTUI')
+      anchors.top: parent.top
+      anchors.horizontalCenter: parent.horizontalCenter
+      color: #ffffff
+      font: verdana-11px-antialised
+
+    -- Test state modifiers
+    HoverButton < UIButton
+      size: 150 30
+      !text: tr('Hover Me')
+      anchors.top: TitleLabel.bottom
+      anchors.horizontalCenter: parent.horizontalCenter
+      margin-top: 10
+      background-color: #3a5a7f
+      color: #ffffff
+      $hover:
+        background-color: #4a6a9f
+      $pressed:
+        background-color: #2a4a6f
+      $disabled:
+        opacity: 0.5
+
+    -- Test layout properties
+    Container < UIPanel
+      size: 350 150
+      anchors.top: HoverButton.bottom
+      anchors.horizontalCenter: parent.horizontalCenter
+      margin-top: 15
+      background-color: #2a2a2a
+      layout:
+        type: verticalBox
+        spacing: 5
+        fit-children: true
+
+      Item1 < UILabel
+        !text: tr('Item 1')
+        height: 20
+        color: #aaaaaa
+
+      Item2 < UILabel
+        !text: tr('Item 2')
+        height: 20
+        color: #aaaaaa
+
+      Item3 < UILabel
+        !text: tr('Item 3')
+        height: 20
+        color: #aaaaaa
+
+    -- Test inline event handler
+    ActionButton < UIButton
+      size: 120 30
+      !text: tr('Click Me')
+      anchors.bottom: parent.bottom
+      anchors.horizontalCenter: parent.horizontalCenter
+      background-color: #aa5555
+      @onClick: |
+        function(self)
+          print("Button clicked!")
+          g_logger.info("OTUI action executed")
+        end
+
+    -- Test UIProgressBar with value/minimum/maximum (no percent)
+    HealthBar < UIProgressBar
+      size: 200 12
+      anchors.bottom: ActionButton.top
+      anchors.horizontalCenter: parent.horizontalCenter
+      margin-bottom: 10
+      value: 75
+      minimum: 0
+      maximum: 100
+      background-color: #2a2a2a
+      border-width: 1
+      border-color: #444444

@@ -1,0 +1,71 @@
+-- Complex OTCR Module Format
+-- Teste de compatibilidade com módulos do OTClient Redemption (limpo)
+
+GameWindow < UIMiniWindow
+  size: 800 600
+  text: tr('Game Interface')
+  background-color: #1a1a1a
+
+  -- Top Panel with game info
+  TopPanel < UIPanel
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: parent.top
+    size: 100% 40
+    background-color: #2a2a2a
+    border-color: #444
+
+    PlayerName < UILabel
+      text: tr('Player Name')
+      color: #fff
+      anchors.left: parent.left
+      anchors.top: parent.top
+      margins: 10 10 0 0
+
+  -- Main Content Area
+  ContentArea < UIPanel
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: TopPanel.bottom
+    anchors.bottom: parent.bottom
+    background-color: #1a1a1a
+    padding: 5
+
+    -- Stats Panel
+    StatsPanel < UIPanel
+      size: 200 300
+      anchors.left: parent.left
+      anchors.top: parent.top
+      background-color: #2a2a2a
+      border-color: #444
+
+      HealthLabel < UILabel
+        text: tr('Health:')
+        color: #ccc
+
+      HealthBar < UIProgressBar
+        size: 180 20
+        value: 75
+        min: 0
+        max: 100
+        background-color: #1a1a1a
+        border-color: #c44
+
+    -- Inventory Panel
+    InventoryPanel < UIPanel
+      size: 200 300
+      anchors.right: parent.right
+      anchors.top: parent.top
+      background-color: #2a2a2a
+      border-color: #444
+      padding: 5
+
+      InventoryLabel < UILabel
+        text: tr('Inventory')
+        color: #ccc
+
+      ItemGrid < UIHorizontalLayout
+        size: 100% 100%
+        layout:
+          type: horizontal
+          spacing: 4

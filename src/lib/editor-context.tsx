@@ -1,5 +1,7 @@
 // Editor state management using React context
 
+// Editor state management using React context
+
 import React, { createContext, useContext, useReducer, useCallback, ReactNode } from 'react';
 import { OTUIWidget, EditorState, HistoryEntry, findWidget, removeWidget, createWidget, deepCloneWidget, WidgetType } from './otui-types';
 import { parseOTUI, SAMPLE_OTUI } from './otui-parser';

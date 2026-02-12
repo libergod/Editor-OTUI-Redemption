@@ -46,11 +46,11 @@ export function ResizeHandle({ widgetId, position }: ResizeHandleProps) {
       const dy = e.clientY - startPos.y;
 
       if (position === 'right' || position === 'bottom-right') {
-        const newW = Math.max(20, startSize.w + dx);
+        const newW = Math.max(1, startSize.w + dx);
         dispatch({ type: 'UPDATE_PROPERTY', widgetId, key: 'width', value: String(Math.round(newW)) });
         // Also update size property
         if (position === 'bottom-right') {
-          const newH = Math.max(20, startSize.h + dy);
+          const newH = Math.max(1, startSize.h + dy);
           dispatch({ type: 'UPDATE_PROPERTY', widgetId, key: 'height', value: String(Math.round(newH)) });
           dispatch({ type: 'UPDATE_PROPERTY', widgetId, key: 'size', value: `${Math.round(newW)} ${Math.round(newH)}` });
         } else {
@@ -58,7 +58,7 @@ export function ResizeHandle({ widgetId, position }: ResizeHandleProps) {
         }
       }
       if (position === 'bottom') {
-        const newH = Math.max(20, startSize.h + dy);
+        const newH = Math.max(1, startSize.h + dy);
         dispatch({ type: 'UPDATE_PROPERTY', widgetId, key: 'height', value: String(Math.round(newH)) });
         dispatch({ type: 'UPDATE_PROPERTY', widgetId, key: 'size', value: `${startSize.w} ${Math.round(newH)}` });
       }

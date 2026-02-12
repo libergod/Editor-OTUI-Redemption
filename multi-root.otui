@@ -1,0 +1,59 @@
+-- Test file with multiple root widgets (cleaned for OTClient)
+
+-- First root widget
+LeftPanel < UIPanel
+  size: 300 400
+  background-color: #2a2a2a
+  border-color: #444
+  padding: 8
+
+  LeftLabel < UILabel
+    text: tr('Left Panel')
+    color: #fff
+    anchors.left: parent.left
+    anchors.top: parent.top
+    margins: 10 0 0 0
+
+  LeftButton < UIButton
+    size: 100 30
+    text: tr('Action')
+    background-color: #3a5a7f
+    anchors.left: parent.left
+    anchors.top: parent.top
+    margins: 10 50 0 0
+
+-- Second root widget
+RightPanel < UIPanel
+  size: 300 400
+  background-color: #2a2a2a
+  border-color: #444
+  padding: 8
+
+  RightLabel < UILabel
+    text: tr('Right Panel')
+    color: #fff
+    anchors.left: parent.left
+    anchors.top: parent.top
+    margins: 10 0 0 0
+
+  RightList < UIList
+    size: 280 340
+    background-color: #1a1a1a
+    border-color: #444
+    anchors.left: parent.left
+    anchors.top: parent.top
+    margins: 10 50 0 0
+
+-- Third root widget
+BottomBar < UIPanel
+  size: 600 50
+  background-color: #1a1a1a
+  border-color: #444
+  padding: 4
+
+  StatusLabel < UILabel
+    text: tr('Ready')
+    color: #ccc
+    anchors.left: parent.left
+    anchors.top: parent.top
+    margins: 10 15 0 0

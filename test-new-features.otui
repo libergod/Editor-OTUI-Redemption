@@ -1,0 +1,39 @@
+// This is a comment line
+MainWindow < UIMiniWindow  // Widget with explicit type
+  text: tr('Test Window')
+  size: 600 400
+
+  // Single word widget names (expanded to explicit types)
+  Label < UILabel
+    text: tr('Hello')
+    !tooltip: "This is a tooltip"  // !property directive
+
+  Button < UIButton
+    text: tr('Click Me')
+    @onclick: "onButtonClick"  // @event directive
+
+  -- Lua style comment
+  Panel < UIPanel
+    background-color: #222
+
+    CheckBox < UICheckBox
+      text: tr('Enable Feature')
+
+    Slider < UISlider
+      percent: 50
+
+  // Multiple root widgets example:
+LeftPanel < UIPanel
+  anchors.left: parent.left
+  anchors.top: parent.top
+  width: 200
+  height: 400
+
+RightPanel < UIPanel
+  anchors.right: parent.right
+  anchors.top: parent.top
+  width: 300
+  height: 400
+
+  Label < UILabel
+    text: tr('Right Content')

@@ -1,0 +1,20 @@
+-- OTCR format with inverted declaration (normalized to explicit)
+
+MainWindow < UIMiniWindow
+  size: 400 300
+  text: tr('Test Window')
+  background-color: #2a2a2a
+
+  Content < UIPanel
+    anchors.fill: parent
+    padding: 8
+    background-color: #1a1a1a
+
+    Title < UILabel
+      text: tr('Content Title')
+      color: #fff
+
+    ActionBtn < UIButton
+      size: 100 30
+      text: tr('Click Me')
+      background-color: #3a5a7f

@@ -2,6 +2,7 @@ import { useEditor } from '@/lib/editor-context';
 import { OTUIWidget } from '@/lib/otui-types';
 import { useEffect, useRef } from 'react';
 import { Copy, Trash2, CopyPlus, ArrowUp, ArrowDown, Eye, EyeOff, Clipboard } from 'lucide-react';
+import { t } from '@/lib/i18n';
 
 interface WidgetContextMenuProps {
   widget: OTUIWidget;
@@ -28,7 +29,7 @@ export function WidgetContextMenu({ widget, position, onClose }: WidgetContextMe
 
   const items = [
     {
-      label: 'Duplicate',
+      label: t('action.duplicate'),
       icon: CopyPlus,
       action: () => {
         dispatch({ type: 'DUPLICATE_WIDGET', id: widget.id });
@@ -36,7 +37,7 @@ export function WidgetContextMenu({ widget, position, onClose }: WidgetContextMe
       },
     },
     {
-      label: 'Copy',
+      label: t('action.copy'),
       icon: Copy,
       action: () => {
         dispatch({ type: 'SELECT_WIDGET', id: widget.id });
@@ -44,7 +45,7 @@ export function WidgetContextMenu({ widget, position, onClose }: WidgetContextMe
       },
     },
     {
-      label: widget.properties.visible === 'false' ? 'Show' : 'Hide',
+      label: widget.properties.visible === 'false' ? t('action.show') : t('action.hide'),
       icon: widget.properties.visible === 'false' ? Eye : EyeOff,
       action: () => {
         dispatch({
@@ -57,7 +58,7 @@ export function WidgetContextMenu({ widget, position, onClose }: WidgetContextMe
       },
     },
     {
-      label: 'Move Up',
+      label: t('action.moveUp'),
       icon: ArrowUp,
       action: () => {
         // Move widget up in parent's children order
@@ -66,7 +67,7 @@ export function WidgetContextMenu({ widget, position, onClose }: WidgetContextMe
       },
     },
     {
-      label: 'Move Down',
+      label: t('action.moveDown'),
       icon: ArrowDown,
       action: () => {
         dispatch({ type: 'MOVE_WIDGET', widgetId: widget.id, newParentId: widget.parentId, index: 1 });
@@ -75,7 +76,7 @@ export function WidgetContextMenu({ widget, position, onClose }: WidgetContextMe
     },
     { type: 'separator' as const },
     {
-      label: 'Delete',
+      label: t('action.delete'),
       icon: Trash2,
       danger: true,
       action: () => {
