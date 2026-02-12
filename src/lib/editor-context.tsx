@@ -8,7 +8,7 @@ import { parseOTUI, SAMPLE_OTUI } from './otui-parser';
 
 type EditorAction =
   | { type: 'SET_WIDGETS'; widgets: OTUIWidget[] }
-  | { type: 'SELECT_WIDGET'; id: string | null }
+  | { type: 'SELECT_WIDGET'; id: string | null; mode?: 'set' | 'toggle' | 'add' }
   | { type: 'ADD_WIDGET'; widget: OTUIWidget; parentId: string | null }
   | { type: 'REMOVE_WIDGET'; id: string }
   | { type: 'UPDATE_PROPERTY'; widgetId: string; key: string; value: string }
@@ -39,6 +39,7 @@ const initialWidgets = parseOTUI(SAMPLE_OTUI);
 const initialState: EditorState = {
   rootWidgets: initialWidgets,
   selectedWidgetId: null,
+  selectedWidgetIds: [],
   clipboard: null,
   history: [{ rootWidgets: initialWidgets, label: 'Initial' }],
   historyIndex: 0,
@@ -47,22 +48,48 @@ const initialState: EditorState = {
 function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case 'SET_WIDGETS':
-      return { ...state, rootWidgets: action.widgets, selectedWidgetId: null };
+      return { ...state, rootWidgets: action.widgets, selectedWidgetId: null, selectedWidgetIds: [] };
 
     case 'SELECT_WIDGET':
-      return { ...state, selectedWidgetId: action.id };
+      if (action.id === null) {
+        return { ...state, selectedWidgetId: null, selectedWidgetIds: [] };
+      }
+
+      if (action.mode === 'toggle') {
+        const exists = state.selectedWidgetIds.includes(action.id);
+        const nextIds = exists
+          ? state.selectedWidgetIds.filter(id => id !== action.id)
+          : [...state.selectedWidgetIds, action.id];
+        const nextPrimary = !exists
+          ? action.id
+          : state.selectedWidgetId === action.id
+            ? nextIds[nextIds.length - 1] || null
+            : state.selectedWidgetId;
+        return { ...state, selectedWidgetId: nextPrimary, selectedWidgetIds: nextIds };
+      }
+
+      if (action.mode === 'add') {
+        const nextIds = state.selectedWidgetIds.includes(action.id)
+          ? state.selectedWidgetIds
+          : [...state.selectedWidgetIds, action.id];
+        return { ...state, selectedWidgetId: action.id, selectedWidgetIds: nextIds };
+      }
+
+      return { ...state, selectedWidgetId: action.id, selectedWidgetIds: [action.id] };
 
     case 'ADD_WIDGET': {
       const newWidgets = addWidgetToParent(state.rootWidgets, action.widget, action.parentId);
-      return { ...state, rootWidgets: newWidgets, selectedWidgetId: action.widget.id };
+      return { ...state, rootWidgets: newWidgets, selectedWidgetId: action.widget.id, selectedWidgetIds: [action.widget.id] };
     }
 
     case 'REMOVE_WIDGET': {
       const newWidgets = removeWidget(state.rootWidgets, action.id);
+      const nextIds = state.selectedWidgetIds.filter(id => id !== action.id);
       return {
         ...state,
         rootWidgets: newWidgets,
-        selectedWidgetId: state.selectedWidgetId === action.id ? null : state.selectedWidgetId,
+        selectedWidgetId: state.selectedWidgetId === action.id ? (nextIds[0] || null) : state.selectedWidgetId,
+        selectedWidgetIds: nextIds,
       };
     }
 
@@ -95,7 +122,7 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
       if (!widget) return state;
       const clone = deepCloneWidget(widget, widget.parentId);
       const newWidgets = addWidgetToParent(state.rootWidgets, clone, widget.parentId);
-      return { ...state, rootWidgets: newWidgets, selectedWidgetId: clone.id };
+      return { ...state, rootWidgets: newWidgets, selectedWidgetId: clone.id, selectedWidgetIds: [clone.id] };
     }
 
     case 'PUSH_HISTORY': {
@@ -112,6 +139,7 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
         rootWidgets: JSON.parse(JSON.stringify(state.history[newIndex].rootWidgets)),
         historyIndex: newIndex,
         selectedWidgetId: null,
+        selectedWidgetIds: [],
       };
     }
 
@@ -123,6 +151,7 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
         rootWidgets: JSON.parse(JSON.stringify(state.history[newIndex].rootWidgets)),
         historyIndex: newIndex,
         selectedWidgetId: null,
+        selectedWidgetIds: [],
       };
     }
 

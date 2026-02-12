@@ -9,7 +9,7 @@ import { t } from '@/lib/i18n';
 function TreeNode({ widget, depth = 0 }: { widget: OTUIWidget; depth?: number }) {
   const { state, dispatch, pushHistory } = useEditor();
   const [expanded, setExpanded] = useState(true);
-  const isSelected = state.selectedWidgetId === widget.id;
+  const isSelected = state.selectedWidgetIds.includes(widget.id);
   const hasChildren = widget.children.length > 0;
 
   return (
@@ -45,7 +45,10 @@ function TreeNode({ widget, depth = 0 }: { widget: OTUIWidget; depth?: number })
         className={`flex items-center gap-1 px-1 py-0.5 cursor-pointer text-xs rounded-sm transition-colors group
           ${isSelected ? 'bg-primary/20 text-primary' : 'hover:bg-editor-hover text-foreground'}`}
         style={{ paddingLeft: `${depth * 14 + 4}px` }}
-        onClick={() => dispatch({ type: 'SELECT_WIDGET', id: widget.id })}
+        onClick={e => {
+          const toggle = e.ctrlKey || e.metaKey || e.shiftKey;
+          dispatch({ type: 'SELECT_WIDGET', id: widget.id, mode: toggle ? 'toggle' : 'set' });
+        }}
       >
         <button
           className="w-4 h-4 flex items-center justify-center shrink-0"

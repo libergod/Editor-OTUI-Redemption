@@ -1,6 +1,6 @@
 // Canvas Preview - Visual representation of the OTUI widget tree
 
-import { OTUIWidget, WidgetType, WIDGET_TYPES } from '@/lib/otui-types';
+import { OTUIWidget, WidgetType, findWidget } from '@/lib/otui-types';
 import { useEditor } from '@/lib/editor-context';
 import { createWidget } from '@/lib/otui-types';
 import { t } from '@/lib/i18n';
@@ -75,22 +75,61 @@ function getTypeColor(type: WidgetType): string {
   return map[type] || 'hsl(var(--editor-widget-border) / 0.3)';
 }
 
+function getWidgetRectFromProps(widget: OTUIWidget): { x: number; y: number; width: number; height: number } {
+  const x = widget.properties.x !== undefined ? Number(widget.properties.x) : 0;
+  const y = widget.properties.y !== undefined ? Number(widget.properties.y) : 0;
+  let width = 100;
+  let height = 100;
+  if (widget.properties.size) {
+    const [sw, sh] = widget.properties.size.split(' ').map(Number);
+    if (sw) width = sw;
+    if (sh) height = sh;
+  }
+  if (widget.properties.width) width = Number(widget.properties.width);
+  if (widget.properties.height) height = Number(widget.properties.height);
+  return { x, y, width, height };
+}
+
+function getParentSpacingLabels(
+  draggedRect: { x: number; y: number; width: number; height: number },
+  parentSize: { width: number; height: number }
+): SpacingLabel[] {
+  const labels: SpacingLabel[] = [];
+  const centerX = draggedRect.x + draggedRect.width / 2;
+  const centerY = draggedRect.y + draggedRect.height / 2;
+
+  const leftGap = Math.max(0, draggedRect.x);
+  const rightGap = Math.max(0, parentSize.width - (draggedRect.x + draggedRect.width));
+  const topGap = Math.max(0, draggedRect.y);
+  const bottomGap = Math.max(0, parentSize.height - (draggedRect.y + draggedRect.height));
+
+  labels.push({ x: draggedRect.x / 2, y: centerY, value: Math.round(leftGap), orientation: 'horizontal' });
+  labels.push({ x: draggedRect.x + draggedRect.width + rightGap / 2, y: centerY, value: Math.round(rightGap), orientation: 'horizontal' });
+  labels.push({ x: centerX, y: draggedRect.y / 2, value: Math.round(topGap), orientation: 'vertical' });
+  labels.push({ x: centerX, y: draggedRect.y + draggedRect.height + bottomGap / 2, value: Math.round(bottomGap), orientation: 'vertical' });
+
+  return labels;
+}
+
 function CanvasWidget({ widget, onDragUpdate }: { widget: OTUIWidget; onDragUpdate?: (guides: Guide[], spacings: SpacingLabel[]) => void }) {
   const { state, dispatch, pushHistory } = useEditor();
-  const isSelected = state.selectedWidgetId === widget.id;
+  const isSelected = state.selectedWidgetIds.includes(widget.id);
   const [isDragOver, setIsDragOver] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [isDraggingWithCtrl, setIsDraggingWithCtrl] = useState(false);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    dispatch({ type: 'SELECT_WIDGET', id: widget.id });
+    const toggle = e.ctrlKey || e.metaKey || e.shiftKey;
+    dispatch({ type: 'SELECT_WIDGET', id: widget.id, mode: toggle ? 'toggle' : 'set' });
   };
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    dispatch({ type: 'SELECT_WIDGET', id: widget.id });
+    if (!isSelected || state.selectedWidgetIds.length > 1) {
+      dispatch({ type: 'SELECT_WIDGET', id: widget.id, mode: 'set' });
+    }
     setContextMenu({ x: e.clientX, y: e.clientY });
   };
 
@@ -115,7 +154,6 @@ function CanvasWidget({ widget, onDragUpdate }: { widget: OTUIWidget; onDragUpda
   };
 
   const style = getWidgetDisplayStyle(widget);
-  const typeInfo = WIDGET_TYPES.find(t => t.type === widget.type);
   
 
   const renderContent = () => {
@@ -167,53 +205,88 @@ function CanvasWidget({ widget, onDragUpdate }: { widget: OTUIWidget; onDragUpda
           ...style,
           backgroundColor: style.backgroundColor || getTypeColor(widget.type),
         }}
+        data-widget-id={widget.id}
         
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         onMouseDown={e => {
-          // start drag only with left button and when this widget is selected
-          if (!isSelected) return;
           if (e.button !== 0) return;
           e.stopPropagation();
+
+          const toggleKey = e.ctrlKey || e.metaKey || e.shiftKey;
+          let nextSelectedIds = state.selectedWidgetIds;
+
+          if (!isSelected) {
+            if (toggleKey) {
+              nextSelectedIds = [...state.selectedWidgetIds, widget.id];
+              dispatch({ type: 'SELECT_WIDGET', id: widget.id, mode: 'add' });
+            } else {
+              nextSelectedIds = [widget.id];
+              dispatch({ type: 'SELECT_WIDGET', id: widget.id, mode: 'set' });
+            }
+          } else if (!toggleKey && state.selectedWidgetIds.length > 1) {
+            nextSelectedIds = [widget.id];
+            dispatch({ type: 'SELECT_WIDGET', id: widget.id, mode: 'set' });
+          }
 
           const startClientX = e.clientX;
           const startClientY = e.clientY;
 
           const widgetEl = e.currentTarget as HTMLElement;
 
-          // find nearest positioned parent: first ancestor .widget-node (excluding self), fallback to .editor-canvas-bg
+          const rootEl = widgetEl.closest('.editor-canvas-root') as HTMLElement | null;
+          const canvasEl = widgetEl.closest('.editor-canvas-bg') as HTMLElement | null;
+
+          // find nearest positioned parent: first ancestor .widget-node (excluding self), fallback to canvas
           const parentWidgetEl = widgetEl.parentElement?.closest('.widget-node');
-          const containerEl = parentWidgetEl || widgetEl.closest('.editor-canvas-bg');
-          const parentRect = containerEl ? (containerEl as HTMLElement).getBoundingClientRect() : { left: 0, top: 0 } as DOMRect;
+          const containerEl = parentWidgetEl || canvasEl;
+          if (!containerEl || !rootEl) return;
+
+          const parentRect = containerEl.getBoundingClientRect();
+          const rootRect = rootEl.getBoundingClientRect();
 
           const rect = widgetEl.getBoundingClientRect();
-          // compute original coords relative to parent/container
-          const origX = widget.properties.x !== undefined ? Number(widget.properties.x) : rect.left - parentRect.left;
-          const origY = widget.properties.y !== undefined ? Number(widget.properties.y) : rect.top - parentRect.top;
+          const movingWidgetIds = nextSelectedIds.filter(id => {
+            const w = findWidget(state.rootWidgets, id);
+            return w && w.parentId === widget.parentId;
+          });
+          if (movingWidgetIds.length === 0) movingWidgetIds.push(widget.id);
 
-          // Collect sibling widgets for alignment guide computation
-          const collectSiblingWidgets = (widgets: OTUIWidget[], currentId: string): Array<{ x: number; y: number; width: number; height: number; id: string }> => {
-            const result: Array<{ x: number; y: number; width: number; height: number; id: string }> = [];
-            widgets.forEach(w => {
-              if (w.id !== currentId) {
-                const x = w.properties.x !== undefined ? Number(w.properties.x) : 0;
-                const y = w.properties.y !== undefined ? Number(w.properties.y) : 0;
-                let width = 100, height = 100;
-                if (w.properties.size) {
-                  const [sw, sh] = w.properties.size.split(' ').map(Number);
-                  width = sw || width;
-                  height = sh || height;
-                }
-                if (w.properties.width) width = Number(w.properties.width);
-                if (w.properties.height) height = Number(w.properties.height);
-                result.push({ x, y, width, height, id: w.id });
-              }
-              result.push(...collectSiblingWidgets(w.children, currentId));
-            });
-            return result;
+          const moveItems = movingWidgetIds
+            .map(id => {
+              const w = findWidget(state.rootWidgets, id);
+              const el = rootEl.querySelector(`[data-widget-id="${id}"]`) as HTMLElement | null;
+              if (!w || !el) return null;
+              const elRect = el.getBoundingClientRect();
+              const origX = w.properties.x !== undefined ? Number(w.properties.x) : elRect.left - parentRect.left;
+              const origY = w.properties.y !== undefined ? Number(w.properties.y) : elRect.top - parentRect.top;
+              return { id, widget: w, origX, origY, width: elRect.width, height: elRect.height };
+            })
+            .filter((item): item is { id: string; widget: OTUIWidget; origX: number; origY: number; width: number; height: number } => Boolean(item));
+
+          if (moveItems.length === 0) return;
+
+          const primary = moveItems.find(item => item.id === widget.id) || moveItems[0];
+
+          const groupMinX = Math.min(...moveItems.map(item => item.origX));
+          const groupMinY = Math.min(...moveItems.map(item => item.origY));
+          const groupMaxX = Math.max(...moveItems.map(item => item.origX + item.width));
+          const groupMaxY = Math.max(...moveItems.map(item => item.origY + item.height));
+          const groupWidth = groupMaxX - groupMinX;
+          const groupHeight = groupMaxY - groupMinY;
+
+          const parentSize = {
+            width: containerEl.clientWidth,
+            height: containerEl.clientHeight,
           };
 
-          const siblingWidgets = collectSiblingWidgets(state.rootWidgets, widget.id);
+          const parentWidget = widget.parentId ? findWidget(state.rootWidgets, widget.parentId) : null;
+          const siblingPool = parentWidget ? parentWidget.children : state.rootWidgets;
+          const siblingWidgets = siblingPool
+            .filter(w => !movingWidgetIds.includes(w.id))
+            .map(w => ({ ...getWidgetRectFromProps(w), id: w.id }));
+
+          siblingWidgets.push({ x: 0, y: 0, width: parentSize.width, height: parentSize.height, id: '__parent__' });
 
           const snap = 4; // snap grid in px
 
@@ -233,46 +306,54 @@ function CanvasWidget({ widget, onDragUpdate }: { widget: OTUIWidget; onDragUpda
               else ndx = 0;
             }
 
-            let newX = Math.round((origX + ndx) / snap) * snap;
-            let newY = Math.round((origY + ndy) / snap) * snap;
+            let deltaX = Math.round((primary.origX + ndx) / snap) * snap - primary.origX;
+            let deltaY = Math.round((primary.origY + ndy) / snap) * snap - primary.origY;
 
-            // Get widget size for alignment computation
-            let wWidth = rect.width;
-            let wHeight = rect.height;
-            if (widget.properties.size) {
-              const [sw, sh] = widget.properties.size.split(' ').map(Number);
-              wWidth = sw || wWidth;
-              wHeight = sh || wHeight;
-            }
-            if (widget.properties.width) wWidth = Number(widget.properties.width);
-            if (widget.properties.height) wHeight = Number(widget.properties.height);
+            const minDeltaX = -groupMinX;
+            const maxDeltaX = parentSize.width - groupMaxX;
+            const minDeltaY = -groupMinY;
+            const maxDeltaY = parentSize.height - groupMaxY;
 
-            // Compute alignment guides (visual only, no snap)
-            const { guides, snapX, snapY, spacings } = computeAlignmentGuides(
-              { x: newX, y: newY, width: wWidth, height: wHeight },
+            deltaX = Math.min(maxDeltaX, Math.max(minDeltaX, deltaX));
+            deltaY = Math.min(maxDeltaY, Math.max(minDeltaY, deltaY));
+
+            moveItems.forEach(item => {
+              const newX = Math.round(item.origX + deltaX);
+              const newY = Math.round(item.origY + deltaY);
+              dispatch({ type: 'UPDATE_PROPERTY', widgetId: item.id, key: 'x', value: String(newX) });
+              dispatch({ type: 'UPDATE_PROPERTY', widgetId: item.id, key: 'y', value: String(newY) });
+            });
+
+            const draggedRect = {
+              x: groupMinX + deltaX,
+              y: groupMinY + deltaY,
+              width: groupWidth,
+              height: groupHeight,
+            };
+
+            const { guides, spacings } = computeAlignmentGuides(
+              draggedRect,
               siblingWidgets,
-              8 // threshold for showing guides
+              8
             );
 
-            // Don't apply snap - guides are visual only
+            const parentSpacings = getParentSpacingLabels(draggedRect, parentSize);
+            const offsetX = parentRect.left - rootRect.left;
+            const offsetY = parentRect.top - rootRect.top;
 
-            // clamp to container bounds
-            const widgetW = rect.width;
-            const widgetH = rect.height;
-            const containerElNode = containerEl as HTMLElement | null;
-            const containerW = containerElNode ? containerElNode.clientWidth : (parentRect.width || (window.innerWidth - parentRect.left));
-            const containerH = containerElNode ? containerElNode.clientHeight : (parentRect.height || (window.innerHeight - parentRect.top));
-            const maxX = Math.max(0, Math.round(containerW - widgetW));
-            const maxY = Math.max(0, Math.round(containerH - widgetH));
-            const clampedX = Math.min(maxX, Math.max(0, newX));
-            const clampedY = Math.min(maxY, Math.max(0, newY));
+            const offsetGuides = guides.map(g =>
+              g.type === 'vertical'
+                ? { ...g, position: g.position + offsetX }
+                : { ...g, position: g.position + offsetY }
+            );
+            const offsetSpacings = [...spacings, ...parentSpacings].map(s => ({
+              ...s,
+              x: s.x + offsetX,
+              y: s.y + offsetY,
+            }));
 
-            dispatch({ type: 'UPDATE_PROPERTY', widgetId: widget.id, key: 'x', value: String(clampedX) });
-            dispatch({ type: 'UPDATE_PROPERTY', widgetId: widget.id, key: 'y', value: String(clampedY) });
-
-            // Update guides visualization
             if (onDragUpdate) {
-              onDragUpdate(guides, spacings);
+              onDragUpdate(offsetGuides, offsetSpacings);
             }
           };
 
@@ -281,8 +362,8 @@ function CanvasWidget({ widget, onDragUpdate }: { widget: OTUIWidget; onDragUpda
             document.removeEventListener('mouseup', onUp);
             setIsDraggingWithCtrl(false);
             
-            // Auto-generate anchors ONLY if Ctrl key is held when dropping
-            if (ev.ctrlKey) {
+            // Auto-generate anchors ONLY if Ctrl key is held when dropping (single widget)
+            if (ev.ctrlKey && moveItems.length === 1) {
               const finalX = Number(widget.properties.x) || 0;
               const finalY = Number(widget.properties.y) || 0;
               const containerElNode = containerEl as HTMLElement | null;
@@ -360,7 +441,7 @@ function CanvasWidget({ widget, onDragUpdate }: { widget: OTUIWidget; onDragUpda
 
               pushHistory('Move widget with anchors');
             } else {
-              pushHistory('Move widget');
+              pushHistory(moveItems.length > 1 ? 'Move widgets' : 'Move widget');
             }
             
             // Clear guides
@@ -568,7 +649,7 @@ export function EditorCanvas() {
         )}
 
         <div 
-          className="inline-flex flex-col gap-4" 
+          className="editor-canvas-root inline-flex flex-col gap-4" 
           style={{ position: 'relative', marginLeft: showRulers ? 32 : 24, marginTop: showRulers ? 32 : 24, paddingRight: 24, paddingBottom: 24 }}
         >
           {/* OTClient Viewport Boundary */}

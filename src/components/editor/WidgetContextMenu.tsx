@@ -40,7 +40,7 @@ export function WidgetContextMenu({ widget, position, onClose }: WidgetContextMe
       label: t('action.copy'),
       icon: Copy,
       action: () => {
-        dispatch({ type: 'SELECT_WIDGET', id: widget.id });
+        dispatch({ type: 'SELECT_WIDGET', id: widget.id, mode: 'set' });
         // Store in clipboard via state
       },
     },

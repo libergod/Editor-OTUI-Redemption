@@ -110,6 +110,7 @@ export interface OTUIWidget {
 export interface EditorState {
   rootWidgets: OTUIWidget[];
   selectedWidgetId: string | null;
+  selectedWidgetIds: string[];
   clipboard: OTUIWidget | null;
   history: HistoryEntry[];
   historyIndex: number;
