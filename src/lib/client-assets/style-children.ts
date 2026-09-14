@@ -12,6 +12,7 @@ import type { OTUIWidget, WidgetType } from '@/lib/otui-types';
 import type { StyleNode } from './style-parser';
 import type { StyleRegistry } from './style-registry';
 import { getStyleName } from './otui-css';
+import { getMockChildren } from './mock-data';
 import { WIDGET_TYPES } from '@/lib/otui-types';
 
 /** Marks widgets produced from a stylesheet rather than the edited document. */
@@ -92,15 +93,26 @@ function mergeOnto(base: OTUIWidget, override: OTUIWidget): OTUIWidget {
   return merged;
 }
 
-const cache = new WeakMap<OTUIWidget, { registry: StyleRegistry | null; children: OTUIWidget[] }>();
+const cache = new WeakMap<
+  OTUIWidget,
+  { registry: StyleRegistry | null; mock: boolean; children: OTUIWidget[] }
+>();
 
 /**
  * The children a widget actually renders: everything its style declares, with
  * the widget's own children merged in by `id`.
+ *
+ * `mock` additionally fills runtime-populated containers (lists) with preview
+ * stand-in rows. It must be passed identically to the layout pass and the
+ * renderer, otherwise boxes and elements drift apart.
  */
-export function expandChildren(widget: OTUIWidget, registry: StyleRegistry | null): OTUIWidget[] {
+export function expandChildren(
+  widget: OTUIWidget,
+  registry: StyleRegistry | null,
+  mock = false,
+): OTUIWidget[] {
   const cached = cache.get(widget);
-  if (cached && cached.registry === registry) return cached.children;
+  if (cached && cached.registry === registry && cached.mock === mock) return cached.children;
 
   let children: OTUIWidget[];
 
@@ -123,6 +135,8 @@ export function expandChildren(widget: OTUIWidget, registry: StyleRegistry | nul
     children = expanded;
   }
 
-  cache.set(widget, { registry, children });
+  if (mock) children = getMockChildren(widget, widget.properties, registry, children);
+
+  cache.set(widget, { registry, mock, children });
   return children;
 }

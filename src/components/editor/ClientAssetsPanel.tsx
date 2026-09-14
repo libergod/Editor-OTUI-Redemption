@@ -17,7 +17,7 @@ function StatusDot({ status }: { status: string }) {
 }
 
 function ModuleBrowser({ onClose, onLoaded }: { onClose: () => void; onLoaded: (bundle: ModuleBundle) => void }) {
-  const { source, installModuleStyles } = useClientAssets();
+  const { source, installModuleStyles, installModuleScripts } = useClientAssets();
   const { dispatch, pushHistory } = useEditor();
   const [modules, setModules] = useState<AssetEntry[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -69,6 +69,7 @@ function ModuleBrowser({ onClose, onLoaded }: { onClose: () => void; onLoaded: (
       const bundle = await loadModuleBundle(source, entry.path);
       const registry = installModuleStyles(bundle.uiFiles);
       if (!registry) throw new Error('Client styles are not ready.');
+      installModuleScripts(bundle.scripts);
       const widgets = materializeModule(bundle, registry);
       if (widgets.length === 0) throw new Error('The module scripts do not load or create a visible UI root.');
       dispatch({ type: 'SET_WIDGETS', widgets });

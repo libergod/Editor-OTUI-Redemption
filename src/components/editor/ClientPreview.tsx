@@ -3,7 +3,7 @@
 import { OTUIWidget } from '@/lib/otui-types';
 import { useEditor } from '@/lib/editor-context';
 import { X } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { t } from '@/lib/i18n';
 import { useSkin } from '@/lib/client-assets/client-assets-context';
 import {
@@ -16,8 +16,23 @@ import {
   textAlignToFlex,
   type SkinContext,
 } from '@/lib/client-assets/otui-css';
+import { applyStates, intrinsicStates } from '@/lib/client-assets/widget-state';
+import { getMockProperties } from '@/lib/client-assets/mock-data';
 import { computeLayout, type LayoutMap } from '@/lib/client-assets/layout';
 import { expandChildren, isSynthetic } from '@/lib/client-assets/style-children';
+
+/** Preview behaviours the user can toggle from the modal toolbar. */
+interface PreviewOptions {
+  /** React to the mouse the way the client does ($hover, $pressed, toggles). */
+  interactive: boolean;
+  /** Fill runtime-populated widgets with stand-in data. */
+  mock: boolean;
+}
+
+const DEFAULT_OPTIONS: PreviewOptions = { interactive: true, mock: true };
+
+/** Native classes whose content is clipped to the widget box by the client. */
+const CLIPPING_BASES = new Set(['UIScrollArea', 'UIScrollPanel', 'UITextEdit', 'UIGameMap']);
 
 // Build a map of all widgets by ID and name for anchor resolution
 function buildWidgetMap(widgets: OTUIWidget[]): Map<string, OTUIWidget> {
@@ -261,6 +276,7 @@ function ClientWidget({
   layout,
   ancestorStyles = new Set<string>(),
   depth = 0,
+  options = DEFAULT_OPTIONS,
 }: { 
   widget: OTUIWidget; 
   onTooltipShow: (id: string, text: string) => void; 
@@ -273,10 +289,34 @@ function ClientWidget({
   layout?: LayoutMap;
   ancestorStyles?: ReadonlySet<string>;
   depth?: number;
+  options?: PreviewOptions;
 }) {
-  // Inherit everything the OTClient stylesheets declare for this widget's style.
-  const props = resolveEffectiveProperties(widget, skin.registry);
+  const [hovered, setHovered] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const [toggled, setToggled] = useState(false);
+
   const skinned = skin.registry !== null;
+  const resolved = skin.registry?.resolve(getStyleName(widget)) ?? null;
+  const nativeBase = resolved?.nativeBase ?? widget.type;
+
+  // Inherit everything the OTClient stylesheets declare for this widget's
+  // style, then top it up with preview data for whatever Lua fills in.
+  const inherited = resolveEffectiveProperties(widget, skin.registry);
+  const baseProps = options.mock
+    ? { ...getMockProperties(widget, inherited, skin.registry, widgetIndex, skin.bindings), ...inherited }
+    : inherited;
+
+  // `$hover`, `$pressed`, `$on`, ... exactly as the client re-skins the widget.
+  const activeStates = intrinsicStates(baseProps);
+  if (options.interactive) {
+    if (hovered) activeStates.add('hover');
+    if (pressed) activeStates.add('pressed');
+    if (toggled) {
+      activeStates.add('on');
+      activeStates.add('checked');
+    }
+  }
+  const props = applyStates(widget, baseProps, skin.registry, activeStates);
 
   if (props.visible === 'false') return null;
 
@@ -301,7 +341,7 @@ function ClientWidget({
   // Styles such as MiniWindow declare their own sub-tree (header, buttons, ...).
   const styleName = getStyleName(widget);
   const repeatedStyle = isSynthetic(widget) && ancestorStyles.has(styleName);
-  const children = repeatedStyle || depth >= 64 ? widget.children : expandChildren(widget, skin.registry);
+  const children = repeatedStyle || depth >= 64 ? widget.children : expandChildren(widget, skin.registry, options.mock);
   const childAncestorStyles = new Set(ancestorStyles);
   childAncestorStyles.add(styleName);
   const textSkin = getTextSkin(props, skin);
@@ -309,8 +349,10 @@ function ClientWidget({
   const tooltip = props.tooltip?.replace(/"/g, '');
 
   // When real client assets are loaded the caption is drawn on top of the
-  // widget's own skin, exactly like OTClient does.
-  const skinnedCaption = (fallback: string) => {
+  // widget's own skin, exactly like OTClient does. Widgets whose caption comes
+  // from Lua stay empty rather than showing their class name.
+  const skinnedCaption = () => {
+    if (!text) return null;
     const { justifyContent, alignItems } = textAlignToFlex(textSkin.align);
     return (
       <div
@@ -322,10 +364,12 @@ function ClientWidget({
           alignItems,
           transform: `translate(${textSkin.offsetX}px, ${textSkin.offsetY}px)`,
           whiteSpace: props['text-wrap'] === 'true' ? 'pre-wrap' : 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
           pointerEvents: 'none',
         }}
       >
-        {text || fallback}
+        {text}
       </div>
     );
   };
@@ -333,13 +377,13 @@ function ClientWidget({
   const typeRenderers: Record<string, () => React.ReactNode> = {
     UILabel: () =>
       skinned ? (
-        <span style={{ whiteSpace: style.whiteSpace || 'nowrap' }}>{text || widget.name}</span>
+        skinnedCaption()
       ) : (
-        <span style={{ fontSize: 12, whiteSpace: style.whiteSpace || 'nowrap', lineHeight: '1.4' }}>{text || widget.name}</span>
+        <span style={{ fontSize: 12, whiteSpace: style.whiteSpace || 'nowrap', lineHeight: '1.4' }}>{text}</span>
       ),
     UIButton: () =>
       skinned ? (
-        skinnedCaption('Button')
+        skinnedCaption()
       ) : (
       <div style={{ 
         padding: '4px 12px', 
@@ -352,12 +396,12 @@ function ClientWidget({
         whiteSpace: 'nowrap',
         minWidth: 'fit-content'
       }}>
-        {text || 'Button'}
+        {text}
       </div>
     ),
     UITextEdit: () =>
       skinned ? (
-        skinnedCaption('')
+        skinnedCaption()
       ) : (
       <div style={{ 
         width: style.width || '100%', 
@@ -386,39 +430,28 @@ function ClientWidget({
       );
     },
     UIImage: () =>
-      skinned && skinStyle.backgroundImage ? null : (
+      skinned ? null : (
       <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1a1a1a', border: '1px solid #333', fontSize: 10, color: '#666' }}>
         {props['image-source']?.replace(/"/g, '') || 'Image'}
       </div>
     ),
     UIPanel: () => null,
-    UIMiniWindow: () => (
+    // Only the placeholder renderer draws window chrome: with client assets the
+    // MiniWindow style provides its own header, buttons and contents panel.
+    UIMiniWindow: () =>
+      skinned ? (
+        skinnedCaption()
+      ) : (
       <>
         <div style={{ width: '100%', height: 24, background: '#2a2a2a', borderBottom: '1px solid #444', display: 'flex', alignItems: 'center', padding: '0 8px', fontSize: 12, fontWeight: 600 }}>
           {text || 'Window'}
           <div style={{ marginLeft: 'auto', width: 14, height: 14, background: '#555', borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, cursor: 'pointer' }}>✕</div>
         </div>
-        {children.map((c, idx) => (
-          <ClientWidget 
-            key={c.id} 
-            widget={c} 
-            onTooltipShow={onTooltipShow} 
-            onTooltipHide={onTooltipHide}
-            siblings={children}
-            widgetIndex={idx}
-            widgetMap={widgetMap}
-            skin={skin}
-            layout={layout}
-            ancestorStyles={childAncestorStyles}
-            depth={depth + 1}
-          />
-        ))}
       </>
     ),
   };
 
-  const isMiniWindow = widget.type === 'UIMiniWindow';
-  const renderContent = typeRenderers[widget.type];
+  const renderContent = typeRenderers[widget.type] ?? (skinned ? skinnedCaption : undefined);
 
   // Without client assets, fall back to the flat placeholder palette.
   const placeholderBackground = skinned
@@ -429,21 +462,55 @@ function ClientWidget({
         ? '#181818'
         : undefined;
 
+  const phantom = props.phantom === 'true';
+  const disabled = activeStates.has('disabled');
+  const clickable =
+    options.interactive &&
+    !phantom &&
+    !disabled &&
+    (nativeBase === 'UIButton' ||
+      props.cursor === 'pointer' ||
+      Object.keys(props).some((key) => key.startsWith('@on')));
+  // CheckBox/TabButton style widgets latch; plain buttons only flash while held.
+  const togglable =
+    clickable && Object.keys(resolved?.states ?? {}).some((selector) => /\$(on|checked)\b/.test(selector));
+
+  const clipsContent =
+    isRootWidget || CLIPPING_BASES.has(nativeBase) || props.clipping === 'true' || props['layout.type'] !== undefined;
+
   return (
     <div
       style={{ 
         ...style, 
         ...skinStyle,
         backgroundColor: skinStyle.backgroundColor ?? style.backgroundColor ?? placeholderBackground,
-        borderStyle: skinStyle.borderStyle ?? (style.borderWidth ? 'solid' : undefined)
+        borderStyle: skinStyle.borderStyle ?? (style.borderWidth ? 'solid' : undefined),
+        overflow: clipsContent ? 'hidden' : style.overflow,
+        cursor: clickable ? 'pointer' : undefined,
+        pointerEvents: phantom ? 'none' : undefined,
+        // The client cross-fades opacity/colour changes between states.
+        transition: 'opacity 90ms linear, color 90ms linear',
       }}
-      onMouseEnter={() => tooltip && onTooltipShow(widget.id, tooltip)}
-      onMouseLeave={() => onTooltipHide()}
+      onMouseEnter={() => {
+        if (options.interactive) setHovered(true);
+        if (tooltip) onTooltipShow(widget.id, tooltip);
+      }}
+      onMouseLeave={() => {
+        setHovered(false);
+        setPressed(false);
+        onTooltipHide();
+      }}
+      onMouseDown={() => clickable && setPressed(true)}
+      onMouseUp={() => {
+        if (!clickable) return;
+        setPressed(false);
+        if (togglable) setToggled((value) => !value);
+      }}
     >
       {renderContent?.()}
       {thingStyle && <div style={thingStyle} />}
       {iconStyle && <div style={iconStyle} />}
-      {!isMiniWindow && children.map((c, idx) => (
+      {children.map((c, idx) => (
         <ClientWidget 
           key={c.id} 
           widget={c} 
@@ -456,6 +523,7 @@ function ClientWidget({
           layout={layout}
           ancestorStyles={childAncestorStyles}
           depth={depth + 1}
+          options={options}
         />
       ))}
     </div>
@@ -473,6 +541,7 @@ export function ClientPreviewModal({ onClose }: ClientPreviewProps) {
   const { state } = useEditor();
   const skin = useSkin();
   const [tooltipState, setTooltipState] = useState<{ widgetId: string; text: string; x: number; y: number } | null>(null);
+  const [options, setOptions] = useState<PreviewOptions>(DEFAULT_OPTIONS);
 
   // Check if we have a virtual root (multiple root widgets)
   const isVirtualRoot = state.rootWidgets.length === 1 && state.rootWidgets[0].id === '__virtual_root__';
@@ -486,8 +555,14 @@ export function ClientPreviewModal({ onClose }: ClientPreviewProps) {
 
   // Real anchor geometry, only available when client assets are connected.
   const layout = useMemo(
-    () => (skin.registry ? computeLayout(widgetsToRender, DEFAULT_VIEWPORT, skin.registry) : undefined),
-    [widgetsToRender, skin.registry],
+    () =>
+      skin.registry
+        ? computeLayout(widgetsToRender, DEFAULT_VIEWPORT, skin.registry, {
+            mock: options.mock,
+            bindings: skin.bindings,
+          })
+        : undefined,
+    [widgetsToRender, skin.registry, skin.bindings, options.mock],
   );
 
   const handleTooltipShow = (widgetId: string, text: string) => {
@@ -516,7 +591,25 @@ export function ClientPreviewModal({ onClose }: ClientPreviewProps) {
           <X className="w-4 h-4" /> {t('clientPreview.close')}
         </button>
         <div className="bg-[#111] border border-[#333] rounded p-2 flex flex-col items-center" style={{ width: '100%', minWidth: 200 }}>
-          <div className="text-[10px] text-[#666] mb-2 font-mono">{t('clientPreview.title')}</div>
+          <div className="flex items-center gap-4 mb-2">
+            <div className="text-[10px] text-[#666] font-mono">{t('clientPreview.title')}</div>
+            <label className="flex items-center gap-1 text-[10px] text-[#888] font-mono cursor-pointer">
+              <input
+                type="checkbox"
+                checked={options.interactive}
+                onChange={(e) => setOptions((current) => ({ ...current, interactive: e.target.checked }))}
+              />
+              {t('clientPreview.interactive')}
+            </label>
+            <label className="flex items-center gap-1 text-[10px] text-[#888] font-mono cursor-pointer">
+              <input
+                type="checkbox"
+                checked={options.mock}
+                onChange={(e) => setOptions((current) => ({ ...current, mock: e.target.checked }))}
+              />
+              {t('clientPreview.mockData')}
+            </label>
+          </div>
 
           {/* Preview viewport: renders all root widgets */}
           <div
@@ -539,6 +632,7 @@ export function ClientPreviewModal({ onClose }: ClientPreviewProps) {
                   widgetMap={widgetMap}
                   skin={skin}
                   layout={layout}
+                  options={options}
                 />
               );
 

@@ -8,6 +8,7 @@ import type { CSSProperties } from 'react';
 import type { OTUIWidget } from '@/lib/otui-types';
 import type { StyleRegistry } from './style-registry';
 import type { FontRegistry } from './fonts';
+import type { LuaBindings } from './lua-bindings';
 import { ImageCache, normalizeColor } from './images';
 
 /** The OTClient style a widget derives from, e.g. "FlatPanel" or "UIButton". */
@@ -52,6 +53,8 @@ export interface SkinContext {
   images: ImageCache | null;
   /** Resolves `item-id` / `outfit-id` to a game sprite, when things are loaded. */
   sprites: ThingSpriteResolver | null;
+  /** Values the loaded module's Lua assigns to widget ids, for the preview. */
+  bindings: LuaBindings | null;
 }
 
 /** Looks up a game sprite for an appearance id; null while loading or missing. */

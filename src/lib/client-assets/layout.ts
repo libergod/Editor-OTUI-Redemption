@@ -7,7 +7,9 @@
 
 import type { OTUIWidget } from '@/lib/otui-types';
 import type { StyleRegistry } from './style-registry';
+import type { LuaBindings } from './lua-bindings';
 import { getStyleName, resolveEffectiveProperties } from './otui-css';
+import { getMockProperties } from './mock-data';
 import { expandChildren, isSynthetic } from './style-children';
 
 export interface Box {
@@ -18,6 +20,18 @@ export interface Box {
 }
 
 export type LayoutMap = Map<string, Box>;
+
+export interface LayoutOptions {
+  /** Fill runtime-populated widgets with preview stand-in data. */
+  mock?: boolean;
+  /** Values the module's Lua assigns, used together with `mock`. */
+  bindings?: LuaBindings | null;
+}
+
+interface PreviewContext {
+  mock: boolean;
+  bindings: LuaBindings | null;
+}
 
 type Axis = 'h' | 'v';
 
@@ -41,6 +55,18 @@ function explicitSize(props: Record<string, string>): { width?: number; height?:
   return result;
 }
 
+/** Effective properties, optionally topped up with preview mock data. */
+function previewProperties(
+  widget: OTUIWidget,
+  registry: StyleRegistry | null,
+  preview: PreviewContext,
+  index = 0,
+): Record<string, string> {
+  const props = resolveEffectiveProperties(widget, registry);
+  if (!preview.mock) return props;
+  return { ...getMockProperties(widget, props, registry, index, preview.bindings), ...props };
+}
+
 function contentBox(box: Box, props: Record<string, string>): Box {
   const padding = props.padding ? num(props.padding) : 0;
   const left = num(props['padding-left'], padding);
@@ -61,6 +87,7 @@ function applyManagedLayout(
   parentProps: Record<string, string>,
   registry: StyleRegistry | null,
   boxes: LayoutMap,
+  preview: PreviewContext,
 ): boolean {
   const type = parentProps['layout.type'];
   if (!['vertical', 'verticalBox', 'horizontal', 'horizontalBox', 'grid'].includes(type)) return false;
@@ -75,7 +102,7 @@ function applyManagedLayout(
       ? configuredColumns
       : Math.max(1, Math.floor((parentBox.width + cellSpacing) / (cellWidth + cellSpacing)));
     children.forEach((child, index) => {
-      const props = resolveEffectiveProperties(child, registry);
+      const props = previewProperties(child, registry, preview, index);
       const size = explicitSize(props);
       const column = index % columns;
       const row = Math.floor(index / columns);
@@ -91,8 +118,8 @@ function applyManagedLayout(
 
   const vertical = type === 'vertical' || type === 'verticalBox';
   let cursor = vertical ? parentBox.top : parentBox.left;
-  for (const child of children) {
-    const props = resolveEffectiveProperties(child, registry);
+  for (const [index, child] of children.entries()) {
+    const props = previewProperties(child, registry, preview, index);
     if (props.visible === 'false') continue;
     const size = explicitSize(props);
     const intrinsic = intrinsicSize(child, props);
@@ -123,8 +150,7 @@ function applyManagedLayout(
   return true;
 }
 
-/** Rough intrinsic size for widgets that size themselves to their caption. */
-function intrinsicSize(widget: OTUIWidget, props: Record<string, string>): { width: number; height: number } {
+/** Rough intrinsic size for widgets that size themselves to their caption. */function intrinsicSize(widget: OTUIWidget, props: Record<string, string>): { width: number; height: number } {
   const raw = props.text ?? '';
   const text = raw.replace(/^tr\(['"](.*)['"]\)$/, '$1').replace(/^["']|["']$/g, '');
   const fontSize = Number(props.font?.match(/(\d+)px/)?.[1] ?? 11);
@@ -252,6 +278,60 @@ function resolveAxis(
 }
 
 /**
+ * Scrollbar sliders are sized by UIScrollBar at runtime, not by anchors: the
+ * stylesheet only says `anchors.centerIn: parent`. Without this the preview
+ * draws a 12x12 dot in the middle of the track.
+ */
+function applyScrollBarGeometry(
+  children: OTUIWidget[],
+  parentBox: Box,
+  parentProps: Record<string, string>,
+  registry: StyleRegistry | null,
+  boxes: LayoutMap,
+  preview: PreviewContext,
+): void {
+  const byId = (id: string) => children.find((child) => child.properties.id === id);
+  const slider = byId('sliderButton');
+  const sliderBox = slider ? boxes.get(slider.id) : undefined;
+  if (!slider || !sliderBox) return;
+
+  const vertical = (parentProps.orientation ?? 'vertical') !== 'horizontal';
+  const decrement = byId('decrementButton');
+  const increment = byId('incrementButton');
+  const decrementBox = decrement ? boxes.get(decrement.id) : undefined;
+  const incrementBox = increment ? boxes.get(increment.id) : undefined;
+
+  const trackStart = vertical
+    ? (decrementBox ? decrementBox.top + decrementBox.height : parentBox.top)
+    : (decrementBox ? decrementBox.left + decrementBox.width : parentBox.left);
+  const trackEnd = vertical
+    ? (incrementBox ? incrementBox.top : parentBox.top + parentBox.height)
+    : (incrementBox ? incrementBox.left : parentBox.left + parentBox.width);
+  const track = Math.max(0, trackEnd - trackStart);
+  if (track === 0) return;
+
+  const sliderProps = previewProperties(slider, registry, preview);
+  const minimum = num(sliderProps.minimum, vertical ? sliderBox.height : sliderBox.width) || 12;
+
+  // A real range gives us the exact slider; otherwise the preview shows a
+  // half-filled bar so the widget reads as a scrollbar at a glance.
+  const rangeMin = num(parentProps.minimum, 0);
+  const rangeMax = num(parentProps.maximum, 0);
+  const hasRange = rangeMax > rangeMin;
+  const ratio = hasRange ? Math.min(1, num(parentProps.step, 1) / (rangeMax - rangeMin)) : preview.mock ? 0.45 : 1;
+  const position = hasRange
+    ? (num(parentProps.value, rangeMin) - rangeMin) / (rangeMax - rangeMin)
+    : preview.mock ? 0.25 : 0;
+
+  const length = Math.min(track, Math.max(minimum, Math.round(track * ratio)));
+  const offset = Math.round(trackStart + (track - length) * Math.max(0, Math.min(1, position)));
+
+  boxes.set(slider.id, vertical
+    ? { left: sliderBox.left, top: offset, width: sliderBox.width, height: length }
+    : { left: offset, top: sliderBox.top, width: length, height: sliderBox.height });
+}
+
+/**
  * Resolves absolute boxes (relative to each widget's parent) for the whole tree.
  * Runs multiple passes so sibling anchors converge regardless of declaration order.
  */
@@ -259,8 +339,10 @@ export function computeLayout(
   roots: OTUIWidget[],
   viewport: { width: number; height: number },
   registry: StyleRegistry | null,
+  options: LayoutOptions = {},
 ): LayoutMap {
   const boxes: LayoutMap = new Map();
+  const preview: PreviewContext = { mock: options.mock === true, bindings: options.bindings ?? null };
 
   const layoutChildren = (
     children: OTUIWidget[],
@@ -271,19 +353,19 @@ export function computeLayout(
   ) => {
     const byName = new Map<string, OTUIWidget>();
     for (const child of children) {
-      const props = resolveEffectiveProperties(child, registry);
+      const props = previewProperties(child, registry, preview);
       byName.set(child.name, child);
       if (props.id) byName.set(props.id, child);
     }
 
-    const managed = applyManagedLayout(children, parentBox, parentProps, registry, boxes);
+    const managed = applyManagedLayout(children, parentBox, parentProps, registry, boxes, preview);
     for (let pass = 0; !managed && pass < MAX_PASSES; pass++) {
       let resolvedThisPass = 0;
 
       children.forEach((child, index) => {
         if (boxes.has(child.id) && pass > 0) return;
 
-        const props = resolveEffectiveProperties(child, registry);
+        const props = previewProperties(child, registry, preview, index);
         const declaredAnchors = collectAnchors(props);
         const anchors: Record<string, AnchorTarget & { side: string; margin: number }> = {};
         let unresolvedDependency = false;
@@ -327,12 +409,14 @@ export function computeLayout(
       if (resolvedThisPass === 0) break;
     }
 
+    applyScrollBarGeometry(children, parentBox, parentProps, registry, boxes, preview);
+
     for (const child of children) {
       const box = boxes.get(child.id);
-      const props = resolveEffectiveProperties(child, registry);
+      const props = previewProperties(child, registry, preview);
       const styleName = getStyleName(child);
       const repeatedStyle = isSynthetic(child) && ancestorStyles.has(styleName);
-      const grandChildren = repeatedStyle || depth >= 64 ? child.children : expandChildren(child, registry);
+      const grandChildren = repeatedStyle || depth >= 64 ? child.children : expandChildren(child, registry, preview.mock);
       if (box && grandChildren.length > 0) {
         const nextAncestorStyles = new Set(ancestorStyles);
         nextAncestorStyles.add(styleName);
@@ -348,7 +432,7 @@ export function computeLayout(
   };
 
   for (const root of roots) {
-    const props = resolveEffectiveProperties(root, registry);
+    const props = previewProperties(root, registry, preview);
     const size = explicitSize(props);
     const fillParent = props['anchors.fill'] === 'parent';
     const width = fillParent ? viewport.width : size.width ?? viewport.width;
@@ -373,7 +457,7 @@ export function computeLayout(
       height,
     };
     boxes.set(root.id, box);
-    layoutChildren(expandChildren(root, registry), contentBox(box, props), props, new Set([getStyleName(root)]), 0);
+    layoutChildren(expandChildren(root, registry, preview.mock), contentBox(box, props), props, new Set([getStyleName(root)]), 0);
   }
 
   return boxes;

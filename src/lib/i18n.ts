@@ -127,6 +127,8 @@ const messages: Record<string, Record<string, string>> = {
     'clientPreview.title': 'OTClient Preview',
     'clientPreview.close': 'Close Preview',
     'clientPreview.empty': 'No widgets to preview',
+    'clientPreview.interactive': 'Interactive',
+    'clientPreview.mockData': 'Mock data',
     
     // Code Comparison Modal
     'codeComparison.title': 'OTUI Analysis and Auto-Fix',
@@ -299,6 +301,8 @@ const messages: Record<string, Record<string, string>> = {
     'clientPreview.title': 'Pré-visualização OTClient',
     'clientPreview.close': 'Fechar Pré-visualização',
     'clientPreview.empty': 'Nenhum widget para visualizar',
+    'clientPreview.interactive': 'Interativo',
+    'clientPreview.mockData': 'Dados de exemplo',
     
     // Code Comparison Modal
     'codeComparison.title': 'Análise e Correção Automática de OTUI',

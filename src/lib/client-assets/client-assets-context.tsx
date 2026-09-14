@@ -20,6 +20,7 @@ import {
   type ThingsCatalog,
 } from './things';
 import type { SkinContext, ThingSpriteResolver } from './otui-css';
+import { extractLuaBindings, type LuaBindings } from './lua-bindings';
 
 export type ClientAssetsStatus = 'idle' | 'connecting' | 'ready' | 'error';
 
@@ -45,6 +46,8 @@ export interface ClientAssetsValue {
   connectDevBridge: () => Promise<void>;
   connectFolder: () => Promise<void>;
   installModuleStyles: (files: { path: string; text: string }[]) => StyleRegistry | null;
+  /** Indexes a module's scripts so the preview can show the values they assign. */
+  installModuleScripts: (scripts: { text: string }[]) => void;
   disconnect: () => void;
   canPickFolder: boolean;
   skin: SkinContext;
@@ -74,6 +77,11 @@ export function ClientAssetsProvider({ children }: { children: React.ReactNode }
   const [thingsLoading, setThingsLoading] = useState(false);
   const [revision, setRevision] = useState(0);
   const [enabled, setEnabledState] = useState(readEnabledPreference);
+  const [bindings, setBindings] = useState<LuaBindings | null>(null);
+
+  const installModuleScripts = useCallback((scripts: { text: string }[]) => {
+    setBindings(extractLuaBindings(scripts));
+  }, []);
 
   const sourceRef = useRef<ClientAssetSource | null>(null);
   const baseStylesRef = useRef<StyleRegistry | null>(null);
@@ -104,9 +112,7 @@ export function ClientAssetsProvider({ children }: { children: React.ReactNode }
     setError(null);
     setStatus('idle');
   }, []);
-
-  const installModuleStyles = useCallback((files: { path: string; text: string }[]) => {
-    const baseStyles = baseStylesRef.current;
+  const installModuleStyles = useCallback((files: { path: string; text: string }[]) => {    const baseStyles = baseStylesRef.current;
     if (!baseStyles) return null;
     const moduleStyles = baseStyles.clone();
     for (const file of files) moduleStyles.addStylesheet(file.text, file.path);
@@ -241,6 +247,7 @@ export function ClientAssetsProvider({ children }: { children: React.ReactNode }
       connectDevBridge,
       connectFolder,
       installModuleStyles,
+      installModuleScripts,
       disconnect,
       canPickFolder: isDirectoryPickerSupported(),
       skin: {
@@ -248,6 +255,7 @@ export function ClientAssetsProvider({ children }: { children: React.ReactNode }
         fonts: active ? fonts : null,
         images: active ? images : null,
         sprites: spriteResolver,
+        bindings: active ? bindings : null,
       },
     };
   }, [
@@ -269,6 +277,8 @@ export function ClientAssetsProvider({ children }: { children: React.ReactNode }
     connectDevBridge,
     connectFolder,
     installModuleStyles,
+    installModuleScripts,
+    bindings,
     disconnect,
   ]);
 
