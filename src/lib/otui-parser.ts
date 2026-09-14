@@ -71,7 +71,7 @@ function getIndent(line: string): number {
   return count;
 }
 
-function isWidgetDeclaration(line: string): { name: string; type: WidgetType } | null {
+function isWidgetDeclaration(line: string): { name: string; type: WidgetType; style?: string; bare?: boolean } | null {
   // Format 1: WidgetName < WidgetType
   let match = line.match(/^(\w+)\s*<\s*(\w+)$/);
   if (match) {
@@ -85,6 +85,9 @@ function isWidgetDeclaration(line: string): { name: string; type: WidgetType } |
     if (WIDGET_NAME_MAP[type]) {
       return { name, type: WIDGET_NAME_MAP[type] };
     }
+    // Unknown base: a style defined in the OTClient stylesheets (FlatPanel, MiniWindow, ...).
+    // Keep it verbatim so the client-assets style registry can resolve it at render time.
+    return { name, type: 'UIWidget', style: type };
   }
 
   // Format 2: WidgetType WidgetName
@@ -130,23 +133,28 @@ function isWidgetDeclaration(line: string): { name: string; type: WidgetType } |
     if (KNOWN_TYPES.has(name as WidgetType)) {
       return { name, type: name as WidgetType };
     }
+    // A bare capitalized identifier instantiates an OTClient style
+    // (e.g. `PhantomMiniWindow` at the top of a module's .otui).
+    if (/^[A-Z]/.test(name)) {
+      return { name, type: 'UIWidget', style: name, bare: true };
+    }
   }
 
   return null;
 }
 
 function isPropertyLine(line: string): { key: string; value: string } | null {
-  // PRESERVE special prefixes: !text:, @onClick:, $hover:
+  // PRESERVE special prefixes: !text:, @onClick:, $hover:, &customProp:
   // These are critical OTCR features and must NOT be normalized
 
-  // Format 1: key: value (standard, including !prefix:, @prefix:, $prefix:)
-  let match = line.match(/^([!@$]?[\w\-.]+)\s*:\s*(.+)$/);
+  // Format 1: key: value (standard, including !prefix:, @prefix:, $prefix:, &prefix:)
+  let match = line.match(/^([!@$&]?[\w\-.]+)\s*:\s*(.+)$/);
   if (match) {
     return { key: match[1], value: match[2].trim() };
   }
 
   // Format 2: key = value (Lua style)
-  match = line.match(/^([!@$]?[\w\-.]+)\s*=\s*(.+)$/);
+  match = line.match(/^([!@$&]?[\w\-.]+)\s*=\s*(.+)$/);
   if (match) {
     return { key: match[1], value: match[2].trim() };
   }
@@ -240,7 +248,7 @@ export function parseOTUI(text: string): OTUIWidget[] {
         id: generateWidgetId(),
         name: decl.name,
         type: decl.type,
-        properties: {},
+        properties: decl.style ? { __style: decl.style, ...(decl.bare ? { __bare: 'true' } : {}) } : {},
         children: [],
         parentId: null,
       };
@@ -371,7 +379,12 @@ export function serializeOTUI(widgets: OTUIWidget[], indent: number = 0): string
   }
 
   for (const widget of widgets) {
-    lines.push(`${prefix}${widget.name} < ${widget.type}`);
+    // Bare declarations (`PhantomMiniWindow`) must not gain an inheritance arrow.
+    lines.push(
+      widget.properties.__bare === 'true'
+        ? `${prefix}${widget.properties.__style || widget.name}`
+        : `${prefix}${widget.name} < ${widget.properties.__style || widget.type}`
+    );
 
     // Separate properties by category
     const layoutProps: Record<string, string> = {};

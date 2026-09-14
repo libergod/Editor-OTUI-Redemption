@@ -5,6 +5,19 @@ import { useEditor } from '@/lib/editor-context';
 import { X } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { t } from '@/lib/i18n';
+import { useSkin } from '@/lib/client-assets/client-assets-context';
+import {
+  getIconStyle,
+  getSkinStyle,
+  getStyleName,
+  getTextSkin,
+  getThingStyle,
+  resolveEffectiveProperties,
+  textAlignToFlex,
+  type SkinContext,
+} from '@/lib/client-assets/otui-css';
+import { computeLayout, type LayoutMap } from '@/lib/client-assets/layout';
+import { expandChildren, isSynthetic } from '@/lib/client-assets/style-children';
 
 // Build a map of all widgets by ID and name for anchor resolution
 function buildWidgetMap(widgets: OTUIWidget[]): Map<string, OTUIWidget> {
@@ -26,9 +39,8 @@ function getClientStyle(
   siblings: OTUIWidget[] = [],
   widgetIndex: number = 0,
   widgetMap: Map<string, OTUIWidget> = new Map(),
-  parentEl?: HTMLElement
+  props: Record<string, string> = widget.properties
 ): React.CSSProperties {
-  const props = widget.properties;
   const style: React.CSSProperties = { position: 'relative', boxSizing: 'border-box' };
 
   // Size - Auto dimensions based on widget type
@@ -244,7 +256,11 @@ function ClientWidget({
   isRootWidget = false,
   siblings = [],
   widgetIndex = 0,
-  widgetMap = new Map()
+  widgetMap = new Map(),
+  skin,
+  layout,
+  ancestorStyles = new Set<string>(),
+  depth = 0,
 }: { 
   widget: OTUIWidget; 
   onTooltipShow: (id: string, text: string) => void; 
@@ -253,15 +269,78 @@ function ClientWidget({
   siblings?: OTUIWidget[];
   widgetIndex?: number;
   widgetMap?: Map<string, OTUIWidget>;
+  skin: SkinContext;
+  layout?: LayoutMap;
+  ancestorStyles?: ReadonlySet<string>;
+  depth?: number;
 }) {
-  if (widget.properties.visible === 'false') return null;
-  const style = getClientStyle(widget, isRootWidget, siblings, widgetIndex, widgetMap);
-  const text = widget.properties.text?.replace(/^tr\(['"](.+)['"]\)$/, '$1').replace(/"/g, '').replace(/\\n/g, '\n') || '';
-  const tooltip = widget.properties.tooltip?.replace(/"/g, '');
+  // Inherit everything the OTClient stylesheets declare for this widget's style.
+  const props = resolveEffectiveProperties(widget, skin.registry);
+  const skinned = skin.registry !== null;
+
+  if (props.visible === 'false') return null;
+
+  // With client assets connected, geometry comes from the resolved anchor
+  // layout instead of the CSS approximation.
+  const box = layout?.get(widget.id);
+  const moduleRoot = isRootWidget && props.__moduleRoot === 'true';
+  const style: React.CSSProperties = box
+    ? {
+        position: moduleRoot || !isRootWidget ? 'absolute' : 'relative',
+        boxSizing: 'border-box',
+        left: moduleRoot || !isRootWidget ? box.left : undefined,
+        top: moduleRoot || !isRootWidget ? box.top : undefined,
+        width: box.width,
+        height: box.height,
+        zIndex: moduleRoot ? Number(props.__moduleLayer) + 1 : undefined,
+      }
+    : getClientStyle(widget, isRootWidget, siblings, widgetIndex, widgetMap, props);
+  const skinStyle = skinned ? getSkinStyle(props, skin) : {};
+  const iconStyle = skinned ? getIconStyle(props, skin) : null;
+  const thingStyle = getThingStyle(props, skin);
+  // Styles such as MiniWindow declare their own sub-tree (header, buttons, ...).
+  const styleName = getStyleName(widget);
+  const repeatedStyle = isSynthetic(widget) && ancestorStyles.has(styleName);
+  const children = repeatedStyle || depth >= 64 ? widget.children : expandChildren(widget, skin.registry);
+  const childAncestorStyles = new Set(ancestorStyles);
+  childAncestorStyles.add(styleName);
+  const textSkin = getTextSkin(props, skin);
+  const text = props.text?.replace(/^tr\(['"](.+)['"]\)$/, '$1').replace(/"/g, '').replace(/\\n/g, '\n') || '';
+  const tooltip = props.tooltip?.replace(/"/g, '');
+
+  // When real client assets are loaded the caption is drawn on top of the
+  // widget's own skin, exactly like OTClient does.
+  const skinnedCaption = (fallback: string) => {
+    const { justifyContent, alignItems } = textAlignToFlex(textSkin.align);
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          justifyContent,
+          alignItems,
+          transform: `translate(${textSkin.offsetX}px, ${textSkin.offsetY}px)`,
+          whiteSpace: props['text-wrap'] === 'true' ? 'pre-wrap' : 'nowrap',
+          pointerEvents: 'none',
+        }}
+      >
+        {text || fallback}
+      </div>
+    );
+  };
 
   const typeRenderers: Record<string, () => React.ReactNode> = {
-    UILabel: () => <span style={{ fontSize: 12, whiteSpace: style.whiteSpace || 'nowrap', lineHeight: '1.4' }}>{text || widget.name}</span>,
-    UIButton: () => (
+    UILabel: () =>
+      skinned ? (
+        <span style={{ whiteSpace: style.whiteSpace || 'nowrap' }}>{text || widget.name}</span>
+      ) : (
+        <span style={{ fontSize: 12, whiteSpace: style.whiteSpace || 'nowrap', lineHeight: '1.4' }}>{text || widget.name}</span>
+      ),
+    UIButton: () =>
+      skinned ? (
+        skinnedCaption('Button')
+      ) : (
       <div style={{ 
         padding: '4px 12px', 
         background: '#3a3a3a', 
@@ -276,7 +355,10 @@ function ClientWidget({
         {text || 'Button'}
       </div>
     ),
-    UITextEdit: () => (
+    UITextEdit: () =>
+      skinned ? (
+        skinnedCaption('')
+      ) : (
       <div style={{ 
         width: style.width || '100%', 
         height: style.height || 20, 
@@ -292,16 +374,21 @@ function ClientWidget({
       </div>
     ),
     UIProgressBar: () => {
-      const pct = Number(widget.properties.percent || widget.properties.value) || 50;
+      const min = Number(props.minimum ?? 0);
+      const max = Number(props.maximum ?? 100);
+      const raw = Number(props.value ?? props.percent);
+      const pct = Number.isFinite(raw) && max > min ? ((raw - min) / (max - min)) * 100 : 50;
+      const clamped = Math.max(0, Math.min(100, pct));
       return (
-        <div style={{ width: '100%', height: '100%', background: '#222', borderRadius: 2, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${pct}%`, background: '#4a9' }} />
+        <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${clamped}%`, background: props['background-color'] ?? '#4a9' }} />
         </div>
       );
     },
-    UIImage: () => (
+    UIImage: () =>
+      skinned && skinStyle.backgroundImage ? null : (
       <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1a1a1a', border: '1px solid #333', fontSize: 10, color: '#666' }}>
-        {widget.properties['image-source']?.replace(/"/g, '') || 'Image'}
+        {props['image-source']?.replace(/"/g, '') || 'Image'}
       </div>
     ),
     UIPanel: () => null,
@@ -311,15 +398,19 @@ function ClientWidget({
           {text || 'Window'}
           <div style={{ marginLeft: 'auto', width: 14, height: 14, background: '#555', borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, cursor: 'pointer' }}>✕</div>
         </div>
-        {widget.children.map((c, idx) => (
+        {children.map((c, idx) => (
           <ClientWidget 
             key={c.id} 
             widget={c} 
             onTooltipShow={onTooltipShow} 
             onTooltipHide={onTooltipHide}
-            siblings={widget.children}
+            siblings={children}
             widgetIndex={idx}
             widgetMap={widgetMap}
+            skin={skin}
+            layout={layout}
+            ancestorStyles={childAncestorStyles}
+            depth={depth + 1}
           />
         ))}
       </>
@@ -329,26 +420,42 @@ function ClientWidget({
   const isMiniWindow = widget.type === 'UIMiniWindow';
   const renderContent = typeRenderers[widget.type];
 
+  // Without client assets, fall back to the flat placeholder palette.
+  const placeholderBackground = skinned
+    ? undefined
+    : widget.type === 'UIPanel'
+      ? '#222'
+      : widget.type === 'UIWidget'
+        ? '#181818'
+        : undefined;
+
   return (
     <div
       style={{ 
         ...style, 
-        backgroundColor: style.backgroundColor || (widget.type === 'UIPanel' ? '#222' : widget.type === 'UIWidget' ? '#181818' : undefined),
-        borderStyle: style.borderWidth ? 'solid' : undefined
+        ...skinStyle,
+        backgroundColor: skinStyle.backgroundColor ?? style.backgroundColor ?? placeholderBackground,
+        borderStyle: skinStyle.borderStyle ?? (style.borderWidth ? 'solid' : undefined)
       }}
       onMouseEnter={() => tooltip && onTooltipShow(widget.id, tooltip)}
       onMouseLeave={() => onTooltipHide()}
     >
       {renderContent?.()}
-      {!isMiniWindow && widget.children.map((c, idx) => (
+      {thingStyle && <div style={thingStyle} />}
+      {iconStyle && <div style={iconStyle} />}
+      {!isMiniWindow && children.map((c, idx) => (
         <ClientWidget 
           key={c.id} 
           widget={c} 
           onTooltipShow={onTooltipShow} 
           onTooltipHide={onTooltipHide}
-          siblings={widget.children}
+          siblings={children}
           widgetIndex={idx}
           widgetMap={widgetMap}
+          skin={skin}
+          layout={layout}
+          ancestorStyles={childAncestorStyles}
+          depth={depth + 1}
         />
       ))}
     </div>
@@ -359,16 +466,29 @@ interface ClientPreviewProps {
   onClose: () => void;
 }
 
+/** Fallback size for root widgets that do not declare one, matching the editor canvas. */
+const DEFAULT_VIEWPORT = { width: 800, height: 600 };
+
 export function ClientPreviewModal({ onClose }: ClientPreviewProps) {
   const { state } = useEditor();
+  const skin = useSkin();
   const [tooltipState, setTooltipState] = useState<{ widgetId: string; text: string; x: number; y: number } | null>(null);
 
   // Check if we have a virtual root (multiple root widgets)
   const isVirtualRoot = state.rootWidgets.length === 1 && state.rootWidgets[0].id === '__virtual_root__';
-  const widgetsToRender = isVirtualRoot ? state.rootWidgets[0].children : state.rootWidgets;
+  const documentRoots = isVirtualRoot ? state.rootWidgets[0].children : state.rootWidgets;
+  const moduleRoots = documentRoots.filter((widget) => widget.properties.__moduleRoot === 'true');
+  const widgetsToRender = moduleRoots.length > 0 ? moduleRoots : documentRoots;
+  const isModuleStack = widgetsToRender.some((widget) => widget.properties.__moduleRoot === 'true');
 
   // Build widget map for anchor resolution
   const widgetMap = useMemo(() => buildWidgetMap(state.rootWidgets), [state.rootWidgets]);
+
+  // Real anchor geometry, only available when client assets are connected.
+  const layout = useMemo(
+    () => (skin.registry ? computeLayout(widgetsToRender, DEFAULT_VIEWPORT, skin.registry) : undefined),
+    [widgetsToRender, skin.registry],
+  );
 
   const handleTooltipShow = (widgetId: string, text: string) => {
     setTooltipState({ widgetId, text, x: 0, y: 0 });
@@ -399,11 +519,31 @@ export function ClientPreviewModal({ onClose }: ClientPreviewProps) {
           <div className="text-[10px] text-[#666] mb-2 font-mono">{t('clientPreview.title')}</div>
 
           {/* Preview viewport: renders all root widgets */}
-          <div className="space-y-4">
+          <div
+            className={isModuleStack ? 'relative bg-[#0c0f12] border border-[#222] overflow-hidden' : 'space-y-4'}
+            style={isModuleStack ? DEFAULT_VIEWPORT : undefined}
+          >
             {widgetsToRender.map((w, idx) => {
-              const width = w.properties.size ? Number(w.properties.size.split(' ')[0]) || 600 : 600;
-              const height = w.properties.size ? Number(w.properties.size.split(' ')[1]) || 400 : 400;
+              const box = layout?.get(w.id);
+              const width = box?.width ?? (w.properties.size ? Number(w.properties.size.split(' ')[0]) || 600 : 600);
+              const height = box?.height ?? (w.properties.size ? Number(w.properties.size.split(' ')[1]) || 400 : 400);
               
+              const widget = (
+                <ClientWidget
+                  widget={w}
+                  onTooltipShow={handleTooltipShow}
+                  onTooltipHide={handleTooltipHide}
+                  isRootWidget={true}
+                  siblings={widgetsToRender}
+                  widgetIndex={idx}
+                  widgetMap={widgetMap}
+                  skin={skin}
+                  layout={layout}
+                />
+              );
+
+              if (isModuleStack) return <div key={w.id}>{widget}</div>;
+
               return (
                 <div
                   key={w.id}
@@ -411,7 +551,7 @@ export function ClientPreviewModal({ onClose }: ClientPreviewProps) {
                   style={{
                     width,
                     height,
-                    overflow: 'visible',
+                    overflow: 'hidden',
                     position: 'relative',
                     boxSizing: 'border-box',
                   }}
@@ -426,15 +566,7 @@ export function ClientPreviewModal({ onClose }: ClientPreviewProps) {
                     width: '100%', 
                     height: '100%'
                   }}>
-                    <ClientWidget 
-                      widget={w} 
-                      onTooltipShow={handleTooltipShow} 
-                      onTooltipHide={handleTooltipHide} 
-                      isRootWidget={true}
-                      siblings={widgetsToRender}
-                      widgetIndex={idx}
-                      widgetMap={widgetMap}
-                    />
+                    {widget}
                   </div>
                 </div>
               );

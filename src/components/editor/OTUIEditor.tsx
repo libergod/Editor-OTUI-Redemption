@@ -7,6 +7,8 @@ import { EditorCanvas } from './EditorCanvas';
 import { PropertiesPanel } from './PropertiesPanel';
 import { EditorToolbar } from './EditorToolbar';
 import { ClientPreviewModal } from './ClientPreview';
+import { ClientAssetsPanel } from './ClientAssetsPanel';
+import { ClientAssetsProvider } from '@/lib/client-assets/client-assets-context';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { useState } from 'react';
 import { Monitor } from 'lucide-react';
@@ -15,9 +17,11 @@ export function OTUIEditor() {
   const [showClientPreview, setShowClientPreview] = useState(false);
 
   return (
+    <ClientAssetsProvider>
     <EditorProvider>
       <div className="h-screen flex flex-col bg-editor-bg overflow-hidden">
         <EditorToolbar>
+          <ClientAssetsPanel />
           <button
             onClick={() => setShowClientPreview(true)}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs bg-secondary hover:bg-secondary/80 text-foreground transition-colors"
@@ -69,5 +73,6 @@ export function OTUIEditor() {
 
       {showClientPreview && <ClientPreviewModal onClose={() => setShowClientPreview(false)} />}
     </EditorProvider>
+    </ClientAssetsProvider>
   );
 }

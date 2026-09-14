@@ -4,16 +4,24 @@ import { OTUIWidget, WidgetType, findWidget } from '@/lib/otui-types';
 import { useEditor } from '@/lib/editor-context';
 import { createWidget } from '@/lib/otui-types';
 import { t } from '@/lib/i18n';
-import { useCallback, useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useEffect, useMemo, useRef } from 'react';
 import { ResizeHandle } from './ResizeHandle';
 import { WidgetContextMenu } from './WidgetContextMenu';
 import { AlignmentGuides, computeAlignmentGuides, Guide, SpacingLabel } from './AlignmentGuides';
 import { EditorHelpModal } from './EditorHelpModal';
 import { RulerBars, RulerGuides, RulerGuide } from './RulerGuides';
-import { HelpCircle, Ruler } from 'lucide-react';
+import { HelpCircle, Plus, Ruler, Trash2 } from 'lucide-react';
+import { useSkin } from '@/lib/client-assets/client-assets-context';
+import { getIconStyle, getSkinStyle, getStyleName, getTextSkin, getThingStyle, resolveEffectiveProperties, textAlignToFlex } from '@/lib/client-assets/otui-css';
+import { expandChildren, isSynthetic } from '@/lib/client-assets/style-children';
+import { computeLayout, type LayoutMap } from '@/lib/client-assets/layout';
+import {
+  buildEditorViewports,
+  EDITOR_VIEWPORT_PROPERTY,
+  type EmptyEditorViewport,
+} from '@/lib/editor-viewports';
 
-function getWidgetDisplayStyle(widget: OTUIWidget): React.CSSProperties {
-  const props = widget.properties;
+function getWidgetDisplayStyle(widget: OTUIWidget, props: Record<string, string> = widget.properties): React.CSSProperties {
   const style: React.CSSProperties = { position: 'relative' };
 
   // Absolute positioning when x/y provided
@@ -111,8 +119,9 @@ function getParentSpacingLabels(
   return labels;
 }
 
-function CanvasWidget({ widget, onDragUpdate }: { widget: OTUIWidget; onDragUpdate?: (guides: Guide[], spacings: SpacingLabel[]) => void }) {
+function CanvasWidget({ widget, layout, isRoot = false, ancestorStyles = new Set<string>(), depth = 0, onDragUpdate }: { widget: OTUIWidget; layout: LayoutMap; isRoot?: boolean; ancestorStyles?: ReadonlySet<string>; depth?: number; onDragUpdate?: (guides: Guide[], spacings: SpacingLabel[]) => void }) {
   const { state, dispatch, pushHistory } = useEditor();
+  const skin = useSkin();
   const isSelected = state.selectedWidgetIds.includes(widget.id);
   const [isDragOver, setIsDragOver] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -153,12 +162,70 @@ function CanvasWidget({ widget, onDragUpdate }: { widget: OTUIWidget; onDragUpda
     setIsDragOver(true);
   };
 
-  const style = getWidgetDisplayStyle(widget);
-  
+  // Properties inherited from the connected OTClient stylesheets, if any.
+  const effectiveProps = resolveEffectiveProperties(widget, skin.registry);
+  const skinned = skin.registry !== null;
+  const fallbackStyle = getWidgetDisplayStyle(widget, effectiveProps);
+  const box = layout.get(widget.id);
+  const style: React.CSSProperties = box ? {
+    ...fallbackStyle,
+    position: 'absolute',
+    left: box.left,
+    top: box.top,
+    width: box.width,
+    height: box.height,
+    zIndex: isRoot && effectiveProps.__moduleRoot === 'true' ? Number(effectiveProps.__moduleLayer) + 1 : undefined,
+    boxSizing: 'border-box',
+    overflow: isRoot ? 'hidden' : fallbackStyle.overflow,
+  } : fallbackStyle;
+  const skinStyle = skinned ? getSkinStyle(effectiveProps, skin) : {};
+  const iconStyle = skinned ? getIconStyle(effectiveProps, skin) : null;
+  const thingStyle = getThingStyle(effectiveProps, skin);
+  // Children declared by the widget's OTClient style (MiniWindow header, ...).
+  const synthetic = isSynthetic(widget);
+  const styleName = getStyleName(widget);
+  const repeatedStyle = synthetic && ancestorStyles.has(styleName);
+  const children = repeatedStyle || depth >= 64 ? widget.children : expandChildren(widget, skin.registry);
+  const childAncestorStyles = new Set(ancestorStyles);
+  childAncestorStyles.add(styleName);
 
   const renderContent = () => {
     const t = widget.type;
-    const text = widget.properties.text?.replace(/"/g, '') || '';
+    const text = (skinned ? effectiveProps.text : widget.properties.text)?.replace(/"/g, '') || '';
+
+    if (skinned) {
+      const textSkin = getTextSkin(effectiveProps, skin);
+      const { justifyContent, alignItems } = textAlignToFlex(textSkin.align);
+
+      if (t === 'UIProgressBar') {
+        const min = Number(effectiveProps.minimum ?? 0);
+        const max = Number(effectiveProps.maximum ?? 100);
+        const raw = Number(effectiveProps.value);
+        const pct = Number.isFinite(raw) && max > min ? ((raw - min) / (max - min)) * 100 : 50;
+        return (
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="h-full" style={{ width: `${Math.max(0, Math.min(100, pct))}%`, background: effectiveProps['background-color'] ?? '#4a9' }} />
+          </div>
+        );
+      }
+      if (t === 'UIMiniWindow') {
+        return <>{children.map(child => <CanvasWidget key={child.id} widget={child} layout={layout} ancestorStyles={childAncestorStyles} depth={depth + 1} />)}</>;
+      }
+      if (!text) return null;
+      return (
+        <div
+          className="absolute inset-0 flex select-none pointer-events-none"
+          style={{
+            justifyContent,
+            alignItems,
+            transform: `translate(${textSkin.offsetX}px, ${textSkin.offsetY}px)`,
+            whiteSpace: effectiveProps['text-wrap'] === 'true' ? 'pre-wrap' : 'nowrap',
+          }}
+        >
+          {text}
+        </div>
+      );
+    }
 
     if (t === 'UILabel') return <span className="text-[11px] font-mono select-none pointer-events-none">{text || widget.name}</span>;
     if (t === 'UIButton') return (
@@ -189,7 +256,7 @@ function CanvasWidget({ widget, onDragUpdate }: { widget: OTUIWidget; onDragUpda
         <div className="w-full h-6 bg-secondary/60 border-b border-border flex items-center px-2 text-[11px] font-semibold select-none pointer-events-none rounded-t">
           {text || 'Window'}
         </div>
-        {widget.children.map(child => <CanvasWidget key={child.id} widget={child} />)}
+        {widget.children.map(child => <CanvasWidget key={child.id} widget={child} layout={layout} ancestorStyles={childAncestorStyles} depth={depth + 1} />)}
       </>
     );
     return null;
@@ -200,10 +267,11 @@ function CanvasWidget({ widget, onDragUpdate }: { widget: OTUIWidget; onDragUpda
   return (
     <>
       <div
-        className={`widget-node ${isSelected ? 'selected' : ''} ${isDragOver ? 'drop-target' : ''} ${isDraggingWithCtrl ? 'border-2 border-green-400 shadow-lg shadow-green-400/50' : ''}`}
+        className={`widget-node ${skinned ? 'skinned' : ''} ${synthetic ? 'synthetic' : ''} ${isSelected ? 'selected' : ''} ${isDragOver ? 'drop-target' : ''} ${isDraggingWithCtrl ? 'border-2 border-green-400 shadow-lg shadow-green-400/50' : ''}`}
         style={{
           ...style,
-          backgroundColor: style.backgroundColor || getTypeColor(widget.type),
+          ...skinStyle,
+          backgroundColor: skinStyle.backgroundColor ?? style.backgroundColor ?? (skinned ? undefined : getTypeColor(widget.type)),
         }}
         data-widget-id={widget.id}
         
@@ -469,8 +537,10 @@ function CanvasWidget({ widget, onDragUpdate }: { widget: OTUIWidget; onDragUpda
         )}
 
         {renderContent()}
+        {thingStyle && <div style={thingStyle} />}
+        {iconStyle && <div style={iconStyle} />}
 
-        {!isMiniWindow && widget.children.map(child => <CanvasWidget key={child.id} widget={child} onDragUpdate={onDragUpdate} />)}
+        {!isMiniWindow && children.map(child => <CanvasWidget key={child.id} widget={child} layout={layout} ancestorStyles={childAncestorStyles} depth={depth + 1} onDragUpdate={onDragUpdate} />)}
 
         {/* Resize handles */}
         {isSelected && (
@@ -495,7 +565,8 @@ function CanvasWidget({ widget, onDragUpdate }: { widget: OTUIWidget; onDragUpda
 
 export function EditorCanvas() {
   const { state, dispatch, pushHistory } = useEditor();
-  const [isDragOver, setIsDragOver] = useState(false);
+  const [dragOverViewportId, setDragOverViewportId] = useState<string | null>(null);
+  const [emptyViewports, setEmptyViewports] = useState<EmptyEditorViewport[]>([]);
   const [showHelp, setShowHelp] = useState(false);
   const [alignmentGuides, setAlignmentGuides] = useState<Guide[]>([]);
   const [spacingLabels, setSpacingLabels] = useState<SpacingLabel[]>([]);
@@ -519,7 +590,24 @@ export function EditorCanvas() {
 
   // Check if we have a virtual root (multiple root widgets)
   const isVirtualRoot = state.rootWidgets.length === 1 && state.rootWidgets[0].id === '__virtual_root__';
-  const widgetsToRender = isVirtualRoot ? state.rootWidgets[0].children : state.rootWidgets;
+  const documentRoots = isVirtualRoot ? state.rootWidgets[0].children : state.rootWidgets;
+  const moduleRoots = documentRoots.filter((widget) => widget.properties.__moduleRoot === 'true');
+  const widgetsToRender = moduleRoots.length > 0 ? moduleRoots : documentRoots;
+  const editorViewports = useMemo(
+    () => buildEditorViewports(widgetsToRender, emptyViewports),
+    [widgetsToRender, emptyViewports],
+  );
+  const skin = useSkin();
+  const layout = useMemo(
+    () => {
+      const merged: LayoutMap = new Map();
+      for (const viewport of editorViewports) {
+        for (const [id, box] of computeLayout(viewport.roots, viewportSize, skin.registry)) merged.set(id, box);
+      }
+      return merged;
+    },
+    [editorViewports, viewportSize, skin.registry],
+  );
 
   const handleDragUpdate = useCallback((guides: Guide[], spacings: SpacingLabel[]) => {
     setAlignmentGuides(guides);
@@ -531,22 +619,63 @@ export function EditorCanvas() {
     setSpacingLabels([]);
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDrop = useCallback((e: React.DragEvent, viewportId: string) => {
     e.preventDefault();
-    setIsDragOver(false);
+    e.stopPropagation();
+    setDragOverViewportId(null);
+
+    const existingRootId = e.dataTransfer.getData('widget-id');
+    const existingRoot = documentRoots.find((widget) => widget.id === existingRootId);
+    if (existingRoot) {
+      if (existingRoot.properties.__moduleRoot === 'true' || moduleRoots.length === 0) {
+        dispatch({
+          type: 'UPDATE_PROPERTY',
+          widgetId: existingRootId,
+          key: EDITOR_VIEWPORT_PROPERTY,
+          value: viewportId,
+        });
+        pushHistory('Move root to viewport');
+      } else {
+        const instance = createWidget(existingRoot.name, existingRoot.type, null);
+        instance.properties = {
+          __style: existingRoot.name,
+          __bare: 'true',
+          __moduleRoot: 'true',
+          __moduleLayer: String(moduleRoots.length),
+          [EDITOR_VIEWPORT_PROPERTY]: viewportId,
+        };
+        dispatch({ type: 'ADD_WIDGET', widget: instance, parentId: null });
+        pushHistory(`Instantiate ${existingRoot.name}`);
+      }
+      return;
+    }
+
     const data = e.dataTransfer.getData('widget-type');
     if (data) {
       const { type, label } = JSON.parse(data);
       const newName = label.replace(/\s/g, '') + '_' + Math.random().toString(36).slice(2, 5);
       const newWidget = createWidget(newName, type, null);
+      newWidget.properties[EDITOR_VIEWPORT_PROPERTY] = viewportId;
+      if (moduleRoots.length > 0) {
+        newWidget.properties.__moduleRoot = 'true';
+        newWidget.properties.__moduleLayer = String(moduleRoots.length);
+      }
       dispatch({ type: 'ADD_WIDGET', widget: newWidget, parentId: null });
       pushHistory('Add widget');
     }
-  }, [dispatch, pushHistory]);
+  }, [dispatch, pushHistory, documentRoots, moduleRoots]);
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = (e: React.DragEvent, viewportId: string) => {
     e.preventDefault();
-    setIsDragOver(true);
+    setDragOverViewportId(viewportId);
+  };
+
+  const addViewport = () => {
+    const id = `viewport:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 6)}`;
+    setEmptyViewports((viewports) => [
+      ...viewports,
+      { id, name: `Viewport ${editorViewports.length + 1}` },
+    ]);
   };
 
   return (
@@ -567,6 +696,13 @@ export function EditorCanvas() {
             title={`${t('ui.rulers')} (Ctrl+R) - ${showRulers ? t('canvas.viewport.on') : t('canvas.viewport.off')}`}
           >
             <Ruler className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={addViewport}
+            className="text-muted-foreground hover:text-primary transition-colors"
+            title="Add OTClient viewport"
+          >
+            <Plus className="w-3.5 h-3.5" />
           </button>
         </div>
         <div className="flex items-center gap-3">
@@ -604,12 +740,9 @@ export function EditorCanvas() {
       </div>
       <div
         ref={canvasContainerRef}
-        className={`flex-1 editor-canvas-bg overflow-auto ${isDragOver ? 'drop-target' : ''}`}
+        className="flex-1 editor-canvas-bg overflow-auto"
         style={{ position: 'relative' }}
         onClick={() => dispatch({ type: 'SELECT_WIDGET', id: null })}
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={() => setIsDragOver(false)}
       >
         {/* Ruler bars (top and left) */}
         {showRulers && (
@@ -648,39 +781,69 @@ export function EditorCanvas() {
           />
         )}
 
-        <div 
-          className="editor-canvas-root inline-flex flex-col gap-4" 
-          style={{ position: 'relative', marginLeft: showRulers ? 32 : 24, marginTop: showRulers ? 32 : 24, paddingRight: 24, paddingBottom: 24 }}
+        <div
+          className="inline-flex items-start gap-6 p-6"
+          style={{ paddingLeft: showRulers ? 32 : 24, paddingTop: showRulers ? 32 : 24 }}
         >
-          {/* OTClient Viewport Boundary */}
-          {showViewport && (
-            <div
-              className="absolute border-2 border-dashed border-primary/40 bg-primary/5 pointer-events-none z-0"
-              style={{
-                width: viewportSize.width,
-                height: viewportSize.height,
-                left: 0,
-                top: 0
-              }}
-            >
-              <div className="absolute top-2 left-2 bg-primary/90 text-primary-foreground px-2 py-0.5 rounded text-[9px] font-mono font-bold">
-                OTClient Viewport: {viewportSize.width}×{viewportSize.height}px
+          {editorViewports.map((viewport, index) => (
+            <section key={viewport.id} className="shrink-0">
+              <div className="h-7 flex items-center border border-b-0 border-border bg-editor-panel px-2">
+                <span className="truncate text-[10px] font-mono text-foreground">{viewport.name}</span>
+                <span className="ml-2 text-[9px] text-muted-foreground">Viewport {index + 1}</span>
+                <span className="ml-auto text-[9px] text-muted-foreground">
+                  {viewport.roots.length} root{viewport.roots.length === 1 ? '' : 's'}
+                </span>
+                {viewport.roots.length === 0 && (
+                  <button
+                    className="ml-2 text-muted-foreground hover:text-destructive"
+                    title="Remove viewport"
+                    onClick={() => setEmptyViewports((viewports) => viewports.filter((item) => item.id !== viewport.id))}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                )}
               </div>
-              <div className="absolute bottom-2 right-2 bg-primary/90 text-primary-foreground px-2 py-0.5 rounded text-[9px] font-mono">
-                Drag widgets within this area for best compatibility
-              </div>
-            </div>
-          )}
+              <div
+                className={`editor-canvas-root relative overflow-hidden border ${
+                  dragOverViewportId === viewport.id ? 'drop-target border-primary' : 'border-border'
+                }`}
+                style={{ width: viewportSize.width, height: viewportSize.height }}
+                onDrop={(event) => handleDrop(event, viewport.id)}
+                onDragOver={(event) => handleDragOver(event, viewport.id)}
+                onDragLeave={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragOverViewportId(null);
+                }}
+              >
+                {showViewport && (
+                  <div className="absolute inset-0 border-2 border-dashed border-primary/40 bg-primary/5 pointer-events-none z-0">
+                    <div className="absolute top-2 left-2 bg-primary/90 text-primary-foreground px-2 py-0.5 rounded text-[9px] font-mono font-bold">
+                      OTClient Viewport: {viewportSize.width}×{viewportSize.height}px
+                    </div>
+                  </div>
+                )}
 
-          {widgetsToRender.map(w => <CanvasWidget key={w.id} widget={w} onDragUpdate={handleDragUpdate} />)}
-          {widgetsToRender.length === 0 && (
-            <div className="text-muted-foreground text-sm flex items-center justify-center min-h-[300px] min-w-[400px] border border-dashed border-border rounded">
-              Drag widgets here to start building
-            </div>
+                {viewport.roots.map((widget) => (
+                  <CanvasWidget key={widget.id} widget={widget} layout={layout} isRoot onDragUpdate={handleDragUpdate} />
+                ))}
+                {viewport.roots.length === 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
+                    Empty viewport
+                  </div>
+                )}
+                <AlignmentGuides guides={alignmentGuides} spacings={spacingLabels} />
+              </div>
+            </section>
+          ))}
+
+          {editorViewports.length === 0 && (
+            <button
+              onClick={addViewport}
+              className="w-[400px] h-[300px] border border-dashed border-border text-muted-foreground hover:text-primary hover:border-primary"
+            >
+              <Plus className="w-5 h-5 mx-auto" />
+              <span className="text-xs">Create viewport</span>
+            </button>
           )}
-          
-          {/* Render alignment guides overlay */}
-          <AlignmentGuides guides={alignmentGuides} spacings={spacingLabels} />
         </div>
       </div>
 

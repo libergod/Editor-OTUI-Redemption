@@ -117,6 +117,31 @@
   background-color: hsl(var(--editor-widget) / 0.3);
 }
 
+/* When real OTClient assets are painted, the widget's own border-image must
+   win; selection/hover feedback moves to an outline so it never repaints the skin. */
+.widget-node.skinned {
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+}
+
+.widget-node.skinned.selected {
+  box-shadow: none;
+  outline: 1px solid hsl(var(--editor-selection));
+  outline-offset: 0;
+}
+
+.widget-node.skinned:hover:not(.selected) {
+  outline: 1px dashed hsl(var(--editor-selection) / 0.6);
+}
+
+/* Widgets provided by an OTClient stylesheet are shown for context but are not
+   part of the edited document, so they must not be selectable or draggable. */
+.widget-node.synthetic {
+  pointer-events: none;
+  outline: none !important;
+}
+
 .widget-node.selected {
   border-color: hsl(var(--editor-selection));
   border-style: solid;
