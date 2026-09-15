@@ -5,7 +5,7 @@ import { serializeOTUI, parseOTUI, validateI18nUsage, I18nWarning } from '@/lib/
 import { validateOTUI, autoFixOTUI, OTUIValidationResult } from '@/lib/otui-validator';
 import { t, setLang, getLang } from '@/lib/i18n';
 import { Undo2, Redo2, FileDown, FileUp, Trash2, Code, X, BookOpen } from 'lucide-react';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { CodeComparisonModal } from './CodeComparisonModal';
 import { CodeBlock } from './CodeBlock';
 import { OTUIStandardReference } from './OTUIStandardReference';
@@ -14,7 +14,7 @@ import { OTUIWidget } from '@/lib/otui-types';
 
 export function EditorToolbar({ children, onWarningsUpdate }: { children?: React.ReactNode; onWarningsUpdate?: (warnings: I18nWarning[]) => void }) {
   const { state, dispatch, pushHistory } = useEditor();
-  const { moduleScripts } = useClientAssets();
+  const { moduleScripts, moduleUIFiles } = useClientAssets();
   const [showCode, setShowCode] = useState(false);
   const [codeTab, setCodeTab] = useState('otui');
   const [importText, setImportText] = useState('');
@@ -28,6 +28,12 @@ export function EditorToolbar({ children, onWarningsUpdate }: { children?: React
   const [fixedWidgets, setFixedWidgets] = useState<OTUIWidget[]>([]);
   const [validationResult, setValidationResult] = useState<OTUIValidationResult | null>(null);
   const [pendingImportSource, setPendingImportSource] = useState<'file' | 'text'>('file');
+
+  // After a module load, land on the original .otui rather than the serialized
+  // subset of runtime widgets (`displayUI` / `createWidget` roots only).
+  useEffect(() => {
+    setCodeTab(moduleUIFiles[0]?.path ?? 'otui');
+  }, [moduleUIFiles]);
 
   const handleExport = () => {
     const otui = serializeOTUI(state.rootWidgets);
@@ -152,12 +158,20 @@ export function EditorToolbar({ children, onWarningsUpdate }: { children?: React
 
   const otuiOutput = serializeOTUI(state.rootWidgets);
 
-  // One tab per source the editor knows about: the generated OTUI plus every
-  // Lua script of the module currently open.
+  // Original module .otui files first (verbatim), then the generated tree the
+  // editor would export, then every Lua script of the module currently open.
   const codeTabs = [
+    ...moduleUIFiles.map((file) => ({
+      id: file.path,
+      label: file.path.split('/').pop() ?? 'OTUI',
+      code: file.text,
+      language: 'otui' as const,
+      path: file.path,
+      empty: '// Empty OTUI file',
+    })),
     {
       id: 'otui',
-      label: 'OTUI Output',
+      label: moduleUIFiles.length > 0 ? 'OTUI Output' : 'OTUI',
       code: otuiOutput,
       language: 'otui' as const,
       path: '',
@@ -182,7 +196,8 @@ export function EditorToolbar({ children, onWarningsUpdate }: { children?: React
       empty: '-- Open an OTClient module to load its Lua source',
     });
   }
-  const activeTab = codeTabs.find((tab) => tab.id === codeTab) ?? codeTabs[0];
+  const preferredTabId = moduleUIFiles[0]?.path ?? 'otui';
+  const activeTab = codeTabs.find((tab) => tab.id === codeTab) ?? codeTabs.find((tab) => tab.id === preferredTabId) ?? codeTabs[0];
 
   return (
     <>

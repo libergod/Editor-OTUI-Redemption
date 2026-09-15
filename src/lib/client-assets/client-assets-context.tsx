@@ -24,7 +24,7 @@ import { extractLuaBindings, type LuaBindings } from './lua-bindings';
 
 export type ClientAssetsStatus = 'idle' | 'connecting' | 'ready' | 'error';
 
-export interface ModuleScriptSource {
+export interface ModuleSourceFile {
   path: string;
   text: string;
   moduleName?: string;
@@ -51,11 +51,13 @@ export interface ClientAssetsValue {
   setEnabled: (enabled: boolean) => void;
   connectDevBridge: () => Promise<void>;
   connectFolder: () => Promise<void>;
-  installModuleStyles: (files: { path: string; text: string }[]) => StyleRegistry | null;
+  installModuleStyles: (files: { path: string; text: string; moduleName?: string }[]) => StyleRegistry | null;
   /** Indexes a module's scripts so the preview can show the values they assign. */
-  installModuleScripts: (scripts: ModuleScriptSource[]) => void;
+  installModuleScripts: (scripts: ModuleSourceFile[]) => void;
   /** The Lua that drives the module currently open, for the code view. */
-  moduleScripts: ModuleScriptSource[];
+  moduleScripts: ModuleSourceFile[];
+  /** Original .otui sources of the module currently open, for the code view. */
+  moduleUIFiles: ModuleSourceFile[];
   disconnect: () => void;
   canPickFolder: boolean;
   skin: SkinContext;
@@ -86,9 +88,10 @@ export function ClientAssetsProvider({ children }: { children: React.ReactNode }
   const [revision, setRevision] = useState(0);
   const [enabled, setEnabledState] = useState(readEnabledPreference);
   const [bindings, setBindings] = useState<LuaBindings | null>(null);
-  const [moduleScripts, setModuleScripts] = useState<ModuleScriptSource[]>([]);
+  const [moduleScripts, setModuleScripts] = useState<ModuleSourceFile[]>([]);
+  const [moduleUIFiles, setModuleUIFiles] = useState<ModuleSourceFile[]>([]);
 
-  const installModuleScripts = useCallback((scripts: ModuleScriptSource[]) => {
+  const installModuleScripts = useCallback((scripts: ModuleSourceFile[]) => {
     setModuleScripts(scripts);
     setBindings(extractLuaBindings(scripts));
   }, []);
@@ -121,8 +124,19 @@ export function ClientAssetsProvider({ children }: { children: React.ReactNode }
     setOrigin(null);
     setError(null);
     setStatus('idle');
+    setBindings(null);
+    setModuleScripts([]);
+    setModuleUIFiles([]);
   }, []);
-  const installModuleStyles = useCallback((files: { path: string; text: string }[]) => {    const baseStyles = baseStylesRef.current;
+
+  const installModuleStyles = useCallback((files: { path: string; text: string; moduleName?: string }[]) => {
+    setModuleUIFiles(files.map((file) => ({
+      path: file.path,
+      text: file.text,
+      moduleName: file.moduleName,
+    })));
+
+    const baseStyles = baseStylesRef.current;
     if (!baseStyles) return null;
     const moduleStyles = baseStyles.clone();
     for (const file of files) moduleStyles.addStylesheet(file.text, file.path);
@@ -259,6 +273,7 @@ export function ClientAssetsProvider({ children }: { children: React.ReactNode }
       installModuleStyles,
       installModuleScripts,
       moduleScripts,
+      moduleUIFiles,
       disconnect,
       canPickFolder: isDirectoryPickerSupported(),
       skin: {
@@ -291,6 +306,7 @@ export function ClientAssetsProvider({ children }: { children: React.ReactNode }
     installModuleScripts,
     bindings,
     moduleScripts,
+    moduleUIFiles,
     disconnect,
   ]);
 

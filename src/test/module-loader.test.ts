@@ -7,6 +7,7 @@ import {
 } from '@/lib/client-assets/module-loader';
 import type { AssetEntry, ClientAssetSource } from '@/lib/client-assets/source';
 import { StyleRegistry } from '@/lib/client-assets/style-registry';
+import { serializeOTUI } from '@/lib/otui-parser';
 
 class MemorySource implements ClientAssetSource {
   readonly kind = 'dev-bridge' as const;
@@ -93,5 +94,11 @@ describe('OTClient module loader', () => {
     expect(widgets[0].type).toBe('UIMiniWindow');
     expect(widgets.map((widget) => widget.properties.__moduleLayer)).toEqual(['0', '1']);
     expect(widgets[0].children[0].properties.__style).toBe('SlotPanel');
+
+    // Runtime roots are not the stylesheet. Code view must use uiFile.text,
+    // not serializeOTUI of the materialized tree, or style definitions vanish.
+    const prey = bundle.uiFiles.find((file) => file.path.endsWith('prey.otui'));
+    expect(prey?.text).toContain('SlotPanel < UIWidget');
+    expect(serializeOTUI(widgets)).not.toContain('SlotPanel <');
   });
 });

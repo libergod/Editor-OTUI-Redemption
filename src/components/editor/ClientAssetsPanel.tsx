@@ -54,6 +54,8 @@ function ModuleBrowser({ onClose, onLoaded }: { onClose: () => void; onLoaded: (
       return;
     }
     try {
+      installModuleStyles([{ path: entry.path, text, moduleName: selected?.split('/').pop() }]);
+      installModuleScripts([]);
       dispatch({ type: 'SET_WIDGETS', widgets: parseOTUI(text) });
       pushHistory(`Open ${entry.name}`);
       onClose();
@@ -67,7 +69,9 @@ function ModuleBrowser({ onClose, onLoaded }: { onClose: () => void; onLoaded: (
     setError(null);
     try {
       const bundle = await loadModuleBundle(source, entry.path);
-      const registry = installModuleStyles(bundle.uiFiles);
+      const entryFiles = bundle.uiFiles.filter((file) => file.moduleName === bundle.entry.name);
+      const otherFiles = bundle.uiFiles.filter((file) => file.moduleName !== bundle.entry.name);
+      const registry = installModuleStyles([...entryFiles, ...otherFiles]);
       if (!registry) throw new Error('Client styles are not ready.');
       installModuleScripts(bundle.scripts);
       const widgets = materializeModule(bundle, registry);
