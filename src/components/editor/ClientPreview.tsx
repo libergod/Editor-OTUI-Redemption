@@ -8,6 +8,7 @@ import { t } from '@/lib/i18n';
 import { useSkin } from '@/lib/client-assets/client-assets-context';
 import {
   getIconStyle,
+  getImageLayerStyle,
   getSkinStyle,
   getStyleName,
   getTextSkin,
@@ -16,8 +17,8 @@ import {
   textAlignToFlex,
   type SkinContext,
 } from '@/lib/client-assets/otui-css';
-import { applyStates, intrinsicStates } from '@/lib/client-assets/widget-state';
-import { getMockProperties } from '@/lib/client-assets/mock-data';
+import { applyStates, restingStates } from '@/lib/client-assets/widget-state';
+import { getLuaLayoutOverrides, getMockProperties } from '@/lib/client-assets/mock-data';
 import { computeLayout, type LayoutMap } from '@/lib/client-assets/layout';
 import { expandChildren, isSynthetic } from '@/lib/client-assets/style-children';
 
@@ -303,11 +304,15 @@ function ClientWidget({
   // style, then top it up with preview data for whatever Lua fills in.
   const inherited = resolveEffectiveProperties(widget, skin.registry);
   const baseProps = options.mock
-    ? { ...getMockProperties(widget, inherited, skin.registry, widgetIndex, skin.bindings), ...inherited }
+    ? getLuaLayoutOverrides(
+        widget,
+        { ...getMockProperties(widget, inherited, skin.registry, widgetIndex, skin.bindings), ...inherited },
+        skin.bindings,
+      )
     : inherited;
 
   // `$hover`, `$pressed`, `$on`, ... exactly as the client re-skins the widget.
-  const activeStates = intrinsicStates(baseProps);
+  const activeStates = restingStates(baseProps, options.mock);
   if (options.interactive) {
     if (hovered) activeStates.add('hover');
     if (pressed) activeStates.add('pressed');
@@ -336,6 +341,7 @@ function ClientWidget({
       }
     : getClientStyle(widget, isRootWidget, siblings, widgetIndex, widgetMap, props);
   const skinStyle = skinned ? getSkinStyle(props, skin) : {};
+  const imageLayerStyle = skinned ? getImageLayerStyle(props, skin) : null;
   const iconStyle = skinned ? getIconStyle(props, skin) : null;
   const thingStyle = getThingStyle(props, skin);
   // Styles such as MiniWindow declare their own sub-tree (header, buttons, ...).
@@ -508,6 +514,7 @@ function ClientWidget({
       }}
     >
       {renderContent?.()}
+      {imageLayerStyle && <div style={imageLayerStyle} />}
       {thingStyle && <div style={thingStyle} />}
       {iconStyle && <div style={iconStyle} />}
       {children.map((c, idx) => (

@@ -38,24 +38,27 @@ interface StateBlock {
 }
 
 /**
- * A selector matches when every `$flag` token is active and every `!flag`
- * token is not. OTClient writes both `$hover !disabled` and `$hover $on`.
+ * A selector token is a flag that must be set, or a negated one that must not.
+ * The stylesheets spell the same thing four ways: `$hover`, `hover` (in compound
+ * selectors like `$on hover`), `!disabled` and `$!on`.
  */
+function parseToken(token: string): { flag: string; negated: boolean } | null {
+  let rest = token.startsWith('$') ? token.slice(1) : token;
+  const negated = rest.startsWith('!');
+  if (negated) rest = rest.slice(1);
+  if (rest.startsWith('$')) rest = rest.slice(1);
+  return rest.length > 0 ? { flag: rest, negated } : null;
+}
+
 function matches(tokens: string[], active: ReadonlySet<string>): boolean {
+  let constraints = 0;
   for (const token of tokens) {
-    if (token.startsWith('!')) {
-      if (active.has(token.slice(1).replace(/^\$/, ''))) return false;
-    } else if (token.startsWith('$')) {
-      const flag = token.slice(1);
-      // `$!on` is the stylesheet spelling of "not on".
-      if (flag.startsWith('!')) {
-        if (active.has(flag.slice(1))) return false;
-      } else if (!active.has(flag)) {
-        return false;
-      }
-    }
+    const parsed = parseToken(token);
+    if (!parsed) continue;
+    constraints++;
+    if (active.has(parsed.flag) === parsed.negated) return false;
   }
-  return tokens.length > 0;
+  return constraints > 0;
 }
 
 function tokenize(selector: string): string[] {
@@ -88,10 +91,24 @@ export function intrinsicStates(props: Record<string, string>): Set<string> {
   return states;
 }
 
+/** The states a widget rests in, before any pointer interaction. */
+export function restingStates(props: Record<string, string>, mock: boolean): Set<string> {
+  const states = intrinsicStates(props);
+  // A scrollbar skins itself only once it has something to scroll (`$!on:
+  // width: 0`); with preview data the window is populated, so show it that way.
+  if (mock && props.orientation !== undefined) states.add('on');
+  return states;
+}
+
 /**
- * `props` with every matching state block applied on top. Blocks are sorted by
- * selector length so a compound selector (`$hover !disabled`) wins over the
- * plain one it refines, matching the client's "most specific last" behaviour.
+ * `props` with every matching state block applied on top.
+ *
+ * Precedence mirrors normal property resolution: blocks the widget declares
+ * itself beat anything inherited from its style chain, and within each group a
+ * compound selector (`$on hover`) beats the plain one it refines.
+ *
+ * Runs even when nothing is active, because negative selectors such as
+ * `$!on: width: 0` describe the *resting* appearance.
  */
 export function applyStates(
   widget: Pick<OTUIWidget, 'type' | 'properties'>,
@@ -99,20 +116,20 @@ export function applyStates(
   registry: StyleRegistry | null,
   active: ReadonlySet<string>,
 ): Record<string, string> {
-  if (active.size === 0) return props;
-
-  const blocks: StateBlock[] = [];
+  const inherited: StateBlock[] = [];
   const resolved = registry?.resolve(getStyleName(widget));
   if (resolved) {
     for (const [selector, properties] of Object.entries(resolved.states)) {
-      blocks.push({ tokens: tokenize(selector), properties });
+      inherited.push({ tokens: tokenize(selector), properties });
     }
   }
-  blocks.push(...localBlocks(props));
 
-  const applicable = blocks.filter((block) => matches(block.tokens, active));
+  const byTokenCount = (a: StateBlock, b: StateBlock) => a.tokens.length - b.tokens.length;
+  const applicable = [
+    ...inherited.filter((block) => matches(block.tokens, active)).sort(byTokenCount),
+    ...localBlocks(props).filter((block) => matches(block.tokens, active)).sort(byTokenCount),
+  ];
   if (applicable.length === 0) return props;
-  applicable.sort((a, b) => a.tokens.length - b.tokens.length);
 
   const merged = { ...props };
   for (const block of applicable) Object.assign(merged, block.properties);

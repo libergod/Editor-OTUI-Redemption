@@ -156,7 +156,8 @@ export function getSkinStyle(props: Record<string, string>, ctx: SkinContext): C
   }
 
   const source = props['image-source'];
-  if (source && ctx.images) {
+  // `image-size` is drawn by getImageLayerStyle, which can overflow the box.
+  if (source && ctx.images && !props['image-size']) {
     const image = ctx.images.get({
       source,
       clip: props['image-clip'],
@@ -179,13 +180,9 @@ export function getSkinStyle(props: Record<string, string>, ctx: SkinContext): C
         style.backgroundRepeat = props['image-repeated'] === 'true' ? 'repeat' : 'no-repeat';
 
         // `image-size` draws the texture at a fixed size regardless of the widget box.
-        const imageSize = parsePair(props['image-size']);
         const imageOffset = parsePair(props['image-offset']);
 
-        if (imageSize) {
-          style.backgroundSize = `${imageSize[0]}px ${imageSize[1]}px`;
-          style.backgroundPosition = 'center';
-        } else if (props['image-repeated'] === 'true') {
+        if (props['image-repeated'] === 'true') {
           style.backgroundSize = 'auto';
         } else if (props['image-fixed-ratio'] === 'true') {
           style.backgroundSize = 'contain';
@@ -198,6 +195,7 @@ export function getSkinStyle(props: Record<string, string>, ctx: SkinContext): C
           style.backgroundSize = '100% 100%';
         }
 
+        // OTClient offsets the image rect from the widget's top-left corner.
         if (imageOffset) style.backgroundPosition = `${imageOffset[0]}px ${imageOffset[1]}px`;
         style.imageRendering = 'pixelated';
       }
@@ -223,10 +221,42 @@ export function getTextSkin(props: Record<string, string>, ctx: SkinContext): Te
 }
 
 /**
+ * CSS for a widget drawn with an explicit `image-size`. OTClient positions the
+ * image rect from the widget's top-left corner and lets it overflow the box —
+ * the 12x12 miniwindow buttons all draw a 14x14 sprite — which a CSS background
+ * cannot do, so it becomes its own layer.
+ */
+export function getImageLayerStyle(props: Record<string, string>, ctx: SkinContext): CSSProperties | null {
+  const source = props['image-source'];
+  const size = parsePair(props['image-size']);
+  if (!source || !size || !ctx.images) return null;
+
+  const image = ctx.images.get({
+    source,
+    clip: props['image-clip'],
+    color: normalizeColor(props['image-color']),
+  });
+  if (!image) return null;
+
+  const offset = parsePair(props['image-offset']) ?? [0, 0];
+  return {
+    position: 'absolute',
+    left: offset[0],
+    top: offset[1],
+    width: size[0],
+    height: size[1],
+    backgroundImage: `url("${image.url}")`,
+    backgroundSize: '100% 100%',
+    backgroundRepeat: 'no-repeat',
+    imageRendering: 'pixelated',
+    pointerEvents: 'none',
+  };
+}
+
+/**
  * CSS for a widget's `icon-source` overlay, drawn on top of the skin.
  * Returns null when the widget has no icon or no client assets are connected.
- */
-export function getIconStyle(props: Record<string, string>, ctx: SkinContext): CSSProperties | null {
+ */export function getIconStyle(props: Record<string, string>, ctx: SkinContext): CSSProperties | null {
   const source = props['icon-source'];
   if (!source || !ctx.images) return null;
 

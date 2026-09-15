@@ -7,12 +7,16 @@ import { t, setLang, getLang } from '@/lib/i18n';
 import { Undo2, Redo2, FileDown, FileUp, Trash2, Code, X, BookOpen } from 'lucide-react';
 import { useState, useRef } from 'react';
 import { CodeComparisonModal } from './CodeComparisonModal';
+import { CodeBlock } from './CodeBlock';
 import { OTUIStandardReference } from './OTUIStandardReference';
+import { useClientAssets } from '@/lib/client-assets/client-assets-context';
 import { OTUIWidget } from '@/lib/otui-types';
 
 export function EditorToolbar({ children, onWarningsUpdate }: { children?: React.ReactNode; onWarningsUpdate?: (warnings: I18nWarning[]) => void }) {
   const { state, dispatch, pushHistory } = useEditor();
+  const { moduleScripts } = useClientAssets();
   const [showCode, setShowCode] = useState(false);
+  const [codeTab, setCodeTab] = useState('otui');
   const [importText, setImportText] = useState('');
   const [showImport, setShowImport] = useState(false);
   const [showStandardRef, setShowStandardRef] = useState(false);
@@ -148,6 +152,38 @@ export function EditorToolbar({ children, onWarningsUpdate }: { children?: React
 
   const otuiOutput = serializeOTUI(state.rootWidgets);
 
+  // One tab per source the editor knows about: the generated OTUI plus every
+  // Lua script of the module currently open.
+  const codeTabs = [
+    {
+      id: 'otui',
+      label: 'OTUI Output',
+      code: otuiOutput,
+      language: 'otui' as const,
+      path: '',
+      empty: '// Empty - add widgets to generate OTUI',
+    },
+    ...moduleScripts.map((script) => ({
+      id: script.path,
+      label: script.path.split('/').pop() ?? 'Lua',
+      code: script.text,
+      language: 'lua' as const,
+      path: script.path,
+      empty: '-- Empty script',
+    })),
+  ];
+  if (moduleScripts.length === 0) {
+    codeTabs.push({
+      id: 'lua',
+      label: 'Lua',
+      code: '',
+      language: 'lua' as const,
+      path: '',
+      empty: '-- Open an OTClient module to load its Lua source',
+    });
+  }
+  const activeTab = codeTabs.find((tab) => tab.id === codeTab) ?? codeTabs[0];
+
   return (
     <>
       <div className="h-10 bg-editor-panel border-b border-border flex items-center px-3 gap-1 shrink-0">
@@ -190,19 +226,35 @@ export function EditorToolbar({ children, onWarningsUpdate }: { children?: React
 
       {/* Code output panel */}
       {showCode && (
-        <div className="border-b border-border bg-editor-bg max-h-60 overflow-auto">
-          <div className="flex items-center justify-between px-3 py-1 border-b border-border">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">OTUI Output</span>
+        <div className="border-b border-border bg-editor-bg flex flex-col max-h-72">
+          <div className="flex items-center gap-1 px-3 py-1 border-b border-border shrink-0">
+            {codeTabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setCodeTab(tab.id)}
+                className={`px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold transition-colors ${
+                  codeTab === tab.id
+                    ? 'bg-secondary text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+            <div className="flex-1" />
+            {activeTab.path && (
+              <span className="text-[10px] text-muted-foreground/60 font-mono mr-2">{activeTab.path}</span>
+            )}
             <button
               className="text-muted-foreground hover:text-foreground"
-              onClick={() => { navigator.clipboard.writeText(otuiOutput); }}
+              onClick={() => { navigator.clipboard.writeText(activeTab.code); }}
             >
               <span className="text-[10px]">Copy</span>
             </button>
           </div>
-          <pre className="p-3 text-[11px] font-mono text-foreground whitespace-pre leading-relaxed">
-            {otuiOutput || '// Empty - add widgets to generate OTUI'}
-          </pre>
+          <div className="overflow-auto">
+            <CodeBlock code={activeTab.code} language={activeTab.language} emptyMessage={activeTab.empty} />
+          </div>
         </div>
       )}
 

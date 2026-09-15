@@ -9,7 +9,8 @@ import type { OTUIWidget } from '@/lib/otui-types';
 import type { StyleRegistry } from './style-registry';
 import type { LuaBindings } from './lua-bindings';
 import { getStyleName, resolveEffectiveProperties } from './otui-css';
-import { getMockProperties } from './mock-data';
+import { applyStates, restingStates } from './widget-state';
+import { getMockProperties, getLuaLayoutOverrides } from './mock-data';
 import { expandChildren, isSynthetic } from './style-children';
 
 export interface Box {
@@ -55,16 +56,21 @@ function explicitSize(props: Record<string, string>): { width?: number; height?:
   return result;
 }
 
-/** Effective properties, optionally topped up with preview mock data. */
+/** Effective properties, with resting states and optional preview mock data. */
 function previewProperties(
   widget: OTUIWidget,
   registry: StyleRegistry | null,
   preview: PreviewContext,
   index = 0,
 ): Record<string, string> {
-  const props = resolveEffectiveProperties(widget, registry);
-  if (!preview.mock) return props;
-  return { ...getMockProperties(widget, props, registry, index, preview.bindings), ...props };
+  const inherited = resolveEffectiveProperties(widget, registry);
+  if (!preview.mock) return applyStates(widget, inherited, registry, restingStates(inherited, false));
+
+  const withMock = { ...getMockProperties(widget, inherited, registry, index, preview.bindings), ...inherited };
+  const props = getLuaLayoutOverrides(widget, withMock, preview.bindings);
+  // State blocks can change geometry (`$!on: width: 0`), so they must be
+  // resolved before anchors are measured.
+  return applyStates(widget, props, registry, restingStates(props, true));
 }
 
 function contentBox(box: Box, props: Record<string, string>): Box {

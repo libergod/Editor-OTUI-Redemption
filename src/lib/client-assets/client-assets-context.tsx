@@ -24,6 +24,12 @@ import { extractLuaBindings, type LuaBindings } from './lua-bindings';
 
 export type ClientAssetsStatus = 'idle' | 'connecting' | 'ready' | 'error';
 
+export interface ModuleScriptSource {
+  path: string;
+  text: string;
+  moduleName?: string;
+}
+
 export interface ClientAssetsValue {
   status: ClientAssetsStatus;
   error: string | null;
@@ -47,7 +53,9 @@ export interface ClientAssetsValue {
   connectFolder: () => Promise<void>;
   installModuleStyles: (files: { path: string; text: string }[]) => StyleRegistry | null;
   /** Indexes a module's scripts so the preview can show the values they assign. */
-  installModuleScripts: (scripts: { text: string }[]) => void;
+  installModuleScripts: (scripts: ModuleScriptSource[]) => void;
+  /** The Lua that drives the module currently open, for the code view. */
+  moduleScripts: ModuleScriptSource[];
   disconnect: () => void;
   canPickFolder: boolean;
   skin: SkinContext;
@@ -78,8 +86,10 @@ export function ClientAssetsProvider({ children }: { children: React.ReactNode }
   const [revision, setRevision] = useState(0);
   const [enabled, setEnabledState] = useState(readEnabledPreference);
   const [bindings, setBindings] = useState<LuaBindings | null>(null);
+  const [moduleScripts, setModuleScripts] = useState<ModuleScriptSource[]>([]);
 
-  const installModuleScripts = useCallback((scripts: { text: string }[]) => {
+  const installModuleScripts = useCallback((scripts: ModuleScriptSource[]) => {
+    setModuleScripts(scripts);
     setBindings(extractLuaBindings(scripts));
   }, []);
 
@@ -248,6 +258,7 @@ export function ClientAssetsProvider({ children }: { children: React.ReactNode }
       connectFolder,
       installModuleStyles,
       installModuleScripts,
+      moduleScripts,
       disconnect,
       canPickFolder: isDirectoryPickerSupported(),
       skin: {
@@ -279,6 +290,7 @@ export function ClientAssetsProvider({ children }: { children: React.ReactNode }
     installModuleStyles,
     installModuleScripts,
     bindings,
+    moduleScripts,
     disconnect,
   ]);
 

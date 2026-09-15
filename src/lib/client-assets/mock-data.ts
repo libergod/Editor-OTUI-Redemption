@@ -11,6 +11,7 @@
 import type { OTUIWidget, WidgetType } from '@/lib/otui-types';
 import type { StyleRegistry } from './style-registry';
 import type { LuaBindings } from './lua-bindings';
+import { BROKEN_ANCHORS, layoutOverrides } from './lua-bindings';
 import { getStyleName } from './otui-css';
 
 /** Identifier of a widget as used by Lua (`getChildById`), falling back to its name. */
@@ -110,42 +111,74 @@ export function getMockProperties(
   index = 0,
   bindings: LuaBindings | null = null,
 ): Record<string, string> {
-  const mock: Record<string, string> = {};
   const key = widgetKey(widget);
   const nativeBase = registry?.resolve(getStyleName(widget))?.nativeBase ?? widget.type;
 
+  // Everything the module's Lua assigns to this id, e.g. `setText('Prey')`.
   const binding = bindings?.get(key);
-  if (binding?.imageSource && props['image-source'] === undefined) {
-    mock['image-source'] = binding.imageSource;
-  }
-  if (binding?.visible === false) mock.visible = 'false';
+  const mock: Record<string, string> = { ...binding };
+  // Geometry the script mutates is an override, not a fallback.
+  for (const property of Object.keys(layoutOverrides(binding))) delete mock[property];
 
   const hasText = props.text !== undefined && props.text.trim() !== '';
   const captionable =
     nativeBase === 'UILabel' || nativeBase === 'UITextEdit' || widget.type === 'UILabel' || widget.type === 'UITextEdit';
 
-  if (!hasText && (captionable || binding?.text !== undefined)) {
-    const caption = binding?.text ?? MOCK_TEXT[key] ?? humanize(key);
+  if (!hasText && mock.text === undefined && captionable) {
+    const caption = MOCK_TEXT[key] ?? humanize(key);
     if (caption) mock.text = caption;
   }
+  if (mock.text === '') delete mock.text;
 
   if (nativeBase === 'UIProgressBar' || widget.type === 'UIProgressBar') {
-    if (props.value === undefined && props.percent === undefined) {
+    if (props.value === undefined && props.percent === undefined && mock.value === undefined) {
       mock.minimum ??= '0';
       mock.maximum ??= '100';
       mock.value = '68';
     }
   }
 
-  if ((nativeBase === 'UIItem' || widget.type === 'UIItem') && props['item-id'] === undefined) {
+  if (
+    (nativeBase === 'UIItem' || widget.type === 'UIItem') &&
+    props['item-id'] === undefined &&
+    mock['item-id'] === undefined
+  ) {
     mock['item-id'] = String(MOCK_ITEM_IDS[index % MOCK_ITEM_IDS.length]);
   }
 
-  if ((nativeBase === 'UICreature' || widget.type === 'UICreature') && props['outfit-id'] === undefined) {
+  if (
+    (nativeBase === 'UICreature' || widget.type === 'UICreature') &&
+    props['outfit-id'] === undefined &&
+    mock['outfit-id'] === undefined
+  ) {
     mock['outfit-id'] = String(MOCK_OUTFIT_ID);
   }
 
   return mock;
+}
+
+/**
+ * Properties a module's Lua changes after the .otui is loaded, which therefore
+ * win over the file: `breakAnchors()`, `addAnchor(...)` and `setMargin*`.
+ */
+export function getLuaLayoutOverrides(
+  widget: Pick<OTUIWidget, 'name' | 'properties'>,
+  props: Record<string, string>,
+  bindings: LuaBindings | null,
+): Record<string, string> {
+  const overrides = layoutOverrides(bindings?.get(widgetKey(widget)));
+  if (Object.keys(overrides).length === 0) return props;
+
+  const result = { ...props };
+  if (overrides[BROKEN_ANCHORS] === 'true') {
+    for (const key of Object.keys(result)) {
+      if (key.startsWith('anchors.')) delete result[key];
+    }
+  }
+  for (const [key, value] of Object.entries(overrides)) {
+    if (key !== BROKEN_ANCHORS) result[key] = value;
+  }
+  return result;
 }
 
 /**

@@ -12,7 +12,7 @@ import { EditorHelpModal } from './EditorHelpModal';
 import { RulerBars, RulerGuides, RulerGuide } from './RulerGuides';
 import { HelpCircle, Plus, Ruler, Trash2 } from 'lucide-react';
 import { useSkin } from '@/lib/client-assets/client-assets-context';
-import { getIconStyle, getSkinStyle, getStyleName, getTextSkin, getThingStyle, resolveEffectiveProperties, textAlignToFlex } from '@/lib/client-assets/otui-css';
+import { getIconStyle, getImageLayerStyle, getSkinStyle, getStyleName, getTextSkin, getThingStyle, resolveEffectiveProperties, textAlignToFlex } from '@/lib/client-assets/otui-css';
 import { expandChildren, isSynthetic } from '@/lib/client-assets/style-children';
 import { computeLayout, type LayoutMap } from '@/lib/client-assets/layout';
 import {
@@ -179,6 +179,7 @@ function CanvasWidget({ widget, layout, isRoot = false, ancestorStyles = new Set
     overflow: isRoot ? 'hidden' : fallbackStyle.overflow,
   } : fallbackStyle;
   const skinStyle = skinned ? getSkinStyle(effectiveProps, skin) : {};
+  const imageLayerStyle = skinned ? getImageLayerStyle(effectiveProps, skin) : null;
   const iconStyle = skinned ? getIconStyle(effectiveProps, skin) : null;
   const thingStyle = getThingStyle(effectiveProps, skin);
   // Children declared by the widget's OTClient style (MiniWindow header, ...).
@@ -537,6 +538,7 @@ function CanvasWidget({ widget, layout, isRoot = false, ancestorStyles = new Set
         )}
 
         {renderContent()}
+        {imageLayerStyle && <div style={imageLayerStyle} />}
         {thingStyle && <div style={thingStyle} />}
         {iconStyle && <div style={iconStyle} />}
 
